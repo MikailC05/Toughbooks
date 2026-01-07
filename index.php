@@ -131,7 +131,11 @@ if (isset($_SESSION['flash_results'])) {
 		progress.textContent = 'Vraag ' + (current+1) + ' van ' + steps.length;
 	}
 
-	// enable next when user picks an answer
+
+
+
+
+	
 	steps.forEach((step, idx)=>{
 		const radios = step.querySelectorAll('input[type=radio]');
 		radios.forEach(r => r.addEventListener('change', ()=>{

@@ -36,7 +36,7 @@ class Question
     public function getOptions()
     {
         $pdo = Database::getInstance()->getPdo();
-        $stmt = $pdo->prepare('SELECT id, label, value, description FROM options WHERE question_id = :qid ORDER BY display_order');
+        $stmt = $pdo->prepare('SELECT id, label, value FROM options WHERE question_id = :qid ORDER BY display_order');
         $stmt->execute([':qid' => $this->id]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }

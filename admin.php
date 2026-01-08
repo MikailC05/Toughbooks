@@ -11,6 +11,84 @@ $error = '';
 $currentUser = Auth::getCurrentUser();
 
 // ============================================================================
+// ADMIN GEBRUIKER TOEVOEGEN
+// ============================================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_admin'])) {
+    $username = trim($_POST['admin_username']);
+    $password = $_POST['admin_password'];
+    $password_confirm = $_POST['admin_password_confirm'];
+    
+    if ($password !== $password_confirm) {
+        $error = 'Wachtwoorden komen niet overeen!';
+    } elseif (strlen($password) < 6) {
+        $error = 'Wachtwoord moet minimaal 6 tekens zijn!';
+    } elseif ($username === '') {
+        $error = 'Gebruikersnaam mag niet leeg zijn!';
+    } else {
+        try {
+            // Check of gebruiker al bestaat
+            $check = $pdo->prepare('SELECT id FROM admin_users WHERE username = ?');
+            $check->execute([$username]);
+            
+            if ($check->fetch()) {
+                $error = 'Deze gebruikersnaam bestaat al!';
+            } else {
+                $hash = password_hash($password, PASSWORD_DEFAULT);
+                $stmt = $pdo->prepare('INSERT INTO admin_users (username, password_hash) VALUES (?, ?)');
+                $stmt->execute([$username, $hash]);
+                $message = "Admin gebruiker '$username' succesvol aangemaakt!";
+            }
+        } catch (Exception $e) {
+            $error = 'Fout: ' . $e->getMessage();
+        }
+    }
+}
+
+// ============================================================================
+// ADMIN GEBRUIKER VERWIJDEREN
+// ============================================================================
+if (isset($_GET['delete_admin'])) {
+    $adminId = (int)$_GET['delete_admin'];
+    
+    // Voorkom dat gebruiker zichzelf verwijdert
+    if ($adminId === $currentUser['id']) {
+        $error = 'Je kunt jezelf niet verwijderen!';
+    } else {
+        try {
+            $stmt = $pdo->prepare('DELETE FROM admin_users WHERE id = ?');
+            $stmt->execute([$adminId]);
+            $message = 'Admin gebruiker succesvol verwijderd!';
+        } catch (Exception $e) {
+            $error = 'Fout: ' . $e->getMessage();
+        }
+    }
+}
+
+// ============================================================================
+// ADMIN WACHTWOORD WIJZIGEN
+// ============================================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
+    $adminId = (int)$_POST['admin_id'];
+    $newPassword = $_POST['new_password'];
+    $confirmPassword = $_POST['confirm_password'];
+    
+    if ($newPassword !== $confirmPassword) {
+        $error = 'Wachtwoorden komen niet overeen!';
+    } elseif (strlen($newPassword) < 6) {
+        $error = 'Wachtwoord moet minimaal 6 tekens zijn!';
+    } else {
+        try {
+            $hash = password_hash($newPassword, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?');
+            $stmt->execute([$hash, $adminId]);
+            $message = 'Wachtwoord succesvol gewijzigd!';
+        } catch (Exception $e) {
+            $error = 'Fout: ' . $e->getMessage();
+        }
+    }
+}
+
+// ============================================================================
 // VRAAG VERWIJDEREN
 // ============================================================================
 if (isset($_GET['delete_question'])) {
@@ -18,23 +96,19 @@ if (isset($_GET['delete_question'])) {
     try {
         $pdo->beginTransaction();
         
-        // Haal optie IDs op
         $optIds = $pdo->prepare('SELECT id FROM options WHERE question_id = ?');
         $optIds->execute([$qid]);
         $options = $optIds->fetchAll(PDO::FETCH_COLUMN);
         
-        // Verwijder scores
         if (!empty($options)) {
             $placeholders = implode(',', array_fill(0, count($options), '?'));
             $delScores = $pdo->prepare("DELETE FROM scores WHERE option_id IN ($placeholders)");
             $delScores->execute($options);
         }
         
-        // Verwijder opties
         $delOpts = $pdo->prepare('DELETE FROM options WHERE question_id = ?');
         $delOpts->execute([$qid]);
         
-        // Verwijder vraag
         $delQ = $pdo->prepare('DELETE FROM questions WHERE id = ?');
         $delQ->execute([$qid]);
         
@@ -64,14 +138,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_question'])) {
             $stmt->execute([$text, 'boolean', $description, $weight, $maxOrder + 1]);
             $qid = $pdo->lastInsertId();
             
-            // Voeg Ja/Nee opties toe
             $optStmt = $pdo->prepare('INSERT INTO options (question_id, label, value, display_order) VALUES (?, ?, ?, ?)');
             $optStmt->execute([$qid, 'Ja', 'yes', 1]);
             $yesId = $pdo->lastInsertId();
             $optStmt->execute([$qid, 'Nee', 'no', 2]);
             $noId = $pdo->lastInsertId();
             
-            // Voeg default scores toe
             $laptops = $pdo->query('SELECT id FROM laptops WHERE is_active = 1')->fetchAll(PDO::FETCH_COLUMN);
             $scoreStmt = $pdo->prepare('INSERT INTO scores (laptop_id, option_id, points, reason) VALUES (?, ?, ?, ?)');
             foreach ($laptops as $lid) {
@@ -80,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_question'])) {
             }
             
             $pdo->commit();
-            $message = 'Vraag succesvol toegevoegd!';
+            $message = 'Vraag succesvol toegevoegd! Je kunt nu de scores aanpassen door op "Bewerken" te klikken.';
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = 'Fout: ' . $e->getMessage();
@@ -124,7 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_scores'])) {
         }
         
         $pdo->commit();
-        $message = 'Scores succesvol bijgewerkt!';
+        $message = 'Scores succesvol bijgewerkt! Deze punten worden gebruikt om de beste laptop te bepalen.';
     } catch (Exception $e) {
         $pdo->rollBack();
         $error = 'Fout: ' . $e->getMessage();
@@ -136,10 +208,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_scores'])) {
 // ============================================================================
 $laptops = $pdo->query('SELECT id, name, model_code, price_eur FROM laptops WHERE is_active = 1 ORDER BY name')->fetchAll();
 $questions = $pdo->query('SELECT id, text, description, weight, display_order FROM questions ORDER BY display_order')->fetchAll();
+$adminUsers = $pdo->query('SELECT id, username, created_at FROM admin_users ORDER BY id')->fetchAll();
+
 $stats = [
     'laptops' => count($laptops),
     'questions' => count($questions),
-    'total_scores' => $pdo->query('SELECT COUNT(*) FROM scores')->fetchColumn()
+    'total_scores' => $pdo->query('SELECT COUNT(*) FROM scores')->fetchColumn(),
+    'admins' => count($adminUsers)
 ];
 
 // Als specifieke vraag geselecteerd voor bewerken
@@ -152,7 +227,6 @@ if (isset($_GET['edit'])) {
     $editQuestion = $stmt->fetch();
     
     if ($editQuestion) {
-        // Haal scores op
         $scoresStmt = $pdo->query("
             SELECT s.id, s.laptop_id, s.option_id, s.points, s.reason,
                    l.name as laptop_name, o.label as option_label
@@ -173,6 +247,7 @@ if (isset($_GET['edit'])) {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Admin - Toughbooks</title>
     <link rel="stylesheet" href="assets/css/style.css">
+    
 </head>
 <body>
 <header class="site-header">
@@ -180,7 +255,7 @@ if (isset($_GET['edit'])) {
         <div class="logo">TB</div>
         <div>
             <h1>Admin Dashboard</h1>
-            <div class="muted">Beheer alles voor de Toughbooks Configurator</div>
+            <div class="muted">Beheer vragen, scores en admin gebruikers</div>
         </div>
     </div>
     <div class="admin-actions">
@@ -201,9 +276,9 @@ if (isset($_GET['edit'])) {
         <div class="error">✗ <?php echo htmlspecialchars($error); ?></div>
     <?php endif; ?>
 
-    <!-- Statistics -->
     <section class="hero">
         <h2>Overzicht</h2>
+        <p class="muted">Beheer de vragen die gebruikers zien en bepaal welke laptops het beste bij hen passen</p>
     </section>
     
     <div class="admin-grid">
@@ -216,29 +291,35 @@ if (isset($_GET['edit'])) {
             <div class="stat-number"><?php echo $stats['questions']; ?></div>
         </div>
         <div class="stat-card">
-            <div class="muted">Totale Scores</div>
+            <div class="muted">Geconfigureerde Scores</div>
             <div class="stat-number"><?php echo $stats['total_scores']; ?></div>
+        </div>
+        <div class="stat-card">
+            <div class="muted">Admin Gebruikers</div>
+            <div class="stat-number"><?php echo $stats['admins']; ?></div>
         </div>
     </div>
 
-    <!-- Tabs -->
     <div class="tabs">
         <div class="tab active" onclick="switchTab('vragen')">📝 Vragen Beheren</div>
-        <div class="tab" onclick="switchTab('laptops')">💻 Laptops</div>
-        <div class="tab" onclick="switchTab('scores')">🎯 Scores Overzicht</div>
+        <div class="tab" onclick="switchTab('laptops')">💻 Laptops Overzicht</div>
+        <div class="tab" onclick="switchTab('admins')">👥 Admin Gebruikers</div>
     </div>
 
     <!-- TAB: Vragen Beheren -->
     <div id="vragen" class="tab-content active">
         <h3>Vragen Beheren</h3>
         
-        <button class="cta" onclick="document.getElementById('addModal').style.display='block'" style="margin-bottom:20px;">
+        <div class="info mb-20">
+            ℹ️ <strong>Hoe werkt het?</strong> Klanten beantwoorden deze vragen. Op basis van hun antwoorden worden punten toegekend aan laptops. De laptop met de meeste punten wordt als beste match getoond.
+        </div>
+        
+        <button class="cta mb-20" onclick="document.getElementById('addModal').style.display='block'">
             ➕ Nieuwe Vraag Toevoegen
         </button>
         
         <?php if ($editQuestion): ?>
-            <!-- Edit Mode -->
-            <div style="background:rgba(255,255,255,0.05);padding:20px;border-radius:8px;margin-bottom:20px;">
+            <div class="edit-section">
                 <h4>✏️ Vraag Bewerken</h4>
                 <form method="post">
                     <input type="hidden" name="question_id" value="<?php echo $editQuestion['id']; ?>">
@@ -249,23 +330,28 @@ if (isset($_GET['edit'])) {
                     </div>
                     
                     <div class="form-group">
-                        <label>Beschrijving (optioneel)</label>
+                        <label>Beschrijving (optioneel - extra uitleg voor klant)</label>
                         <textarea name="question_description"><?php echo htmlspecialchars($editQuestion['description'] ?? ''); ?></textarea>
                     </div>
                     
                     <div class="form-group">
-                        <label>Weging (belangrijk)</label>
+                        <label>Weging (hoe belangrijk is deze vraag?)</label>
                         <input type="number" name="question_weight" step="0.1" min="0.1" max="5" value="<?php echo $editQuestion['weight']; ?>" required>
-                        <div class="helper-text">1.0 = normaal, 1.5 = belangrijker, 0.5 = minder belangrijk</div>
+                        <div class="helper-text">
+                            <strong>1.0</strong> = normale vraag | 
+                            <strong>1.5</strong> = belangrijke vraag (scores × 1.5) | 
+                            <strong>0.5</strong> = minder belangrijk (scores × 0.5)
+                        </div>
                     </div>
                     
-                    <button type="submit" name="edit_question" class="btn btn-primary">💾 Opslaan</button>
+                    <button type="submit" name="edit_question" class="btn btn-primary">💾 Vraag Opslaan</button>
                     <a href="admin.php" class="btn btn-secondary">❌ Annuleren</a>
                 </form>
                 
-                <!-- Scores bewerken -->
-                <hr style="margin:30px 0;border-color:rgba(255,255,255,0.1);">
-                <h4>🎯 Scores voor deze vraag</h4>
+                <hr class="hr-custom">
+                <h4>🎯 Scores Instellen (hoeveel punten krijgt elke laptop?)</h4>
+                <p class="muted mb-20">Bepaal hoeveel punten elke laptop krijgt als de klant "Ja" of "Nee" antwoordt. Hogere punten = betere match.</p>
+                
                 <form method="post">
                     <input type="hidden" name="question_id" value="<?php echo $editQuestion['id']; ?>">
                     
@@ -273,23 +359,23 @@ if (isset($_GET['edit'])) {
                         <?php 
                         $currentLaptop = '';
                         foreach ($editScores as $score): 
-                            if ($currentLaptop !== $score['laptop_name']): 
+                                if ($currentLaptop !== $score['laptop_name']): 
                                 if ($currentLaptop !== '') echo '</div>';
                                 $currentLaptop = $score['laptop_name'];
-                                echo "<h5 style='margin-top:20px;'>💻 " . htmlspecialchars($currentLaptop) . "</h5>";
-                                echo "<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;'>";
+                                echo "<h5 class='laptop-heading'>💻 " . htmlspecialchars($currentLaptop) . "</h5>";
+                                echo "<div class='two-col-grid'>";
                             endif;
                         ?>
                             <div class="score-item">
-                                <strong><?php echo htmlspecialchars($score['option_label']); ?></strong>
-                                <div style="display:grid;grid-template-columns:100px 1fr;gap:8px;margin-top:8px;">
+                                <strong class="option-label"><?php echo htmlspecialchars($score['option_label']); ?></strong>
+                                <div class="two-col-input-grid">
                                     <div>
-                                        <label style="font-size:0.8em;">Punten:</label>
-                                        <input type="number" name="scores[<?php echo $score['id']; ?>][points]" value="<?php echo $score['points']; ?>" style="width:100%;padding:6px;">
+                                        <label class="small-label">Punten:</label>
+                                        <input type="number" name="scores[<?php echo $score['id']; ?>][points]" value="<?php echo $score['points']; ?>" min="0" max="100" class="input-full">
                                     </div>
                                     <div>
-                                        <label style="font-size:0.8em;">Reden:</label>
-                                        <input type="text" name="scores[<?php echo $score['id']; ?>][reason]" value="<?php echo htmlspecialchars($score['reason']); ?>" style="width:100%;padding:6px;">
+                                        <label class="small-label">Reden (intern):</label>
+                                        <input type="text" name="scores[<?php echo $score['id']; ?>][reason]" value="<?php echo htmlspecialchars($score['reason']); ?>" placeholder="Waarom deze punten?" class="input-full">
                                     </div>
                                 </div>
                             </div>
@@ -297,38 +383,52 @@ if (isset($_GET['edit'])) {
                         <?php if ($currentLaptop !== '') echo '</div>'; ?>
                     </div>
                     
-                    <button type="submit" name="update_scores" class="btn btn-primary" style="margin-top:20px;">💾 Scores Opslaan</button>
+                    <div class="info mt-20">
+                        💡 <strong>Tip:</strong> Geef 0 punten als het antwoord niet relevant is. Geef 20-30 punten voor sterke matches. De laptop met de meeste totale punten wint!
+                    </div>
+                    
+                    <button type="submit" name="update_scores" class="btn btn-primary mt-20">💾 Scores Opslaan</button>
                 </form>
             </div>
         <?php endif; ?>
         
-        <!-- Vragen Lijst -->
         <table>
             <thead>
                 <tr>
-                    <th style="width:50px;">#</th>
+                    <th class="col-50">#</th>
                     <th>Vraag</th>
-                    <th style="width:100px;">Weging</th>
-                    <th style="width:200px;">Acties</th>
+                    <th class="col-100">Weging</th>
+                    <th class="col-200">Acties</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($questions as $q): ?>
+                <?php if (empty($questions)): ?>
                 <tr>
-                    <td><?php echo $q['display_order']; ?></td>
-                    <td>
-                        <strong><?php echo htmlspecialchars($q['text']); ?></strong>
-                        <?php if ($q['description']): ?>
-                            <div class="muted" style="font-size:0.85em;margin-top:4px;"><?php echo htmlspecialchars($q['description']); ?></div>
-                        <?php endif; ?>
-                    </td>
-                    <td><?php echo $q['weight']; ?>x</td>
-                    <td>
-                        <a href="?edit=<?php echo $q['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
-                        <a href="?delete_question=<?php echo $q['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze vraag wilt verwijderen?');">🗑️ Verwijderen</a>
+                    <td colspan="4" class="empty-table">
+                        <div class="muted">
+                            <div class="emoji-large">📝</div>
+                            Nog geen vragen. Klik op "Nieuwe Vraag Toevoegen" om te beginnen.
+                        </div>
                     </td>
                 </tr>
-                <?php endforeach; ?>
+                <?php else: ?>
+                    <?php foreach ($questions as $q): ?>
+                    <tr>
+                        <td><strong><?php echo $q['display_order']; ?></strong></td>
+                        <td>
+                            <strong><?php echo htmlspecialchars($q['text']); ?></strong>
+                                <?php if ($q['description']): ?>
+                                <div class="muted muted-small"><?php echo htmlspecialchars($q['description']); ?></div>
+                            <?php endif; ?>
+                        </td>
+                        <td><span class="weight-badge"><?php echo $q['weight']; ?>x</span></td>
+                        <td>
+                            <a href="?edit=<?php echo $q['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
+                            <a href="?delete_question=<?php echo $q['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze vraag wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -336,6 +436,8 @@ if (isset($_GET['edit'])) {
     <!-- TAB: Laptops -->
     <div id="laptops" class="tab-content">
         <h3>Toughbook Modellen</h3>
+        <p class="muted">Dit zijn de laptops waar klanten uit kunnen kiezen op basis van hun antwoorden.</p>
+        
         <table>
             <thead>
                 <tr>
@@ -349,56 +451,56 @@ if (isset($_GET['edit'])) {
                 <tr>
                     <td><strong><?php echo htmlspecialchars($l['name']); ?></strong></td>
                     <td><?php echo htmlspecialchars($l['model_code'] ?? '-'); ?></td>
-                    <td>€<?php echo number_format($l['price_eur'], 2, ',', '.'); ?></td>
+                    <td><strong>€<?php echo number_format($l['price_eur'], 2, ',', '.'); ?></strong></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
     </div>
 
-    <!-- TAB: Scores Overzicht -->
-    <div id="scores" class="tab-content">
-        <h3>Scores Overzicht</h3>
-        <p class="muted">Overzicht van alle punten per laptop en vraag</p>
+    <!-- TAB: Admin Gebruikers -->
+    <div id="admins" class="tab-content">
+        <h3>Admin Gebruikers</h3>
+        <p class="muted">Beheer wie toegang heeft tot dit admin panel.</p>
         
-        <?php
-        $scoreOverview = $pdo->query("
-            SELECT l.name as laptop, q.text as question, o.label as answer, s.points
-            FROM scores s
-            JOIN laptops l ON s.laptop_id = l.id
-            JOIN options o ON s.option_id = o.id
-            JOIN questions q ON o.question_id = q.id
-            WHERE s.points > 0
-            ORDER BY l.name, q.display_order
-        ")->fetchAll();
+        <button class="cta mb-20" onclick="document.getElementById('addAdminModal').style.display='block'">
+            ➕ Nieuwe Admin Toevoegen
+        </button>
         
-        $grouped = [];
-        foreach ($scoreOverview as $row) {
-            $grouped[$row['laptop']][] = $row;
-        }
-        
-        foreach ($grouped as $laptop => $scores):
-        ?>
-            <h4><?php echo htmlspecialchars($laptop); ?></h4>
-            <table style="font-size:0.9em;margin-bottom:30px;">
-                <thead>
-                    <tr>
-                        <th>Vraag</th>
-                        <th style="width:100px;">Antwoord</th>
-                        <th style="width:80px;">Punten</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($scores as $s): ?>
-                    <tr>
-                        <td><?php echo htmlspecialchars($s['question']); ?></td>
-                        <td><strong><?php echo htmlspecialchars($s['answer']); ?></strong></td>
-                        <td><strong style="color:#4CAF50;"><?php echo $s['points']; ?></strong></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php endforeach; ?>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Gebruikersnaam</th>
+                    <th>Aangemaakt op</th>
+                    <th class="col-250">Acties</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($adminUsers as $admin): ?>
+                <tr class="<?php echo $admin['id'] === $currentUser['id'] ? 'current-user' : ''; ?>">
+                    <td><?php echo $admin['id']; ?></td>
+                    <td>
+                        <strong><?php echo htmlspecialchars($admin['username']); ?></strong>
+                        <?php if ($admin['id'] === $currentUser['id']): ?>
+                            <span class="you-badge">● Jij</span>
+                        <?php endif; ?>
+                    </td>
+                    <td><?php echo date('d-m-Y H:i', strtotime($admin['created_at'])); ?></td>
+                    <td>
+                        <button onclick="showPasswordModal(<?php echo $admin['id']; ?>, '<?php echo htmlspecialchars($admin['username'], ENT_QUOTES); ?>')" class="btn btn-secondary btn-small">
+                            🔑 Wachtwoord Wijzigen
+                        </button>
+                        <?php if ($admin['id'] !== $currentUser['id']): ?>
+                            <a href="?delete_admin=<?php echo $admin['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je <?php echo htmlspecialchars($admin['username']); ?> wilt verwijderen?');">
+                                🗑️ Verwijderen
+                            </a>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 </main>
 
@@ -408,24 +510,26 @@ if (isset($_GET['edit'])) {
         <span class="close" onclick="document.getElementById('addModal').style.display='none'">&times;</span>
         <h3>➕ Nieuwe Vraag Toevoegen</h3>
         
+        <div class="info mb-20">
+            ℹ️ Na het toevoegen kun je de scores per laptop instellen door op "Bewerken" te klikken.
+        </div>
+        
         <form method="post">
             <div class="form-group">
                 <label>Vraagtekst *</label>
-                <input type="text" name="question_text" required placeholder="Bijv. Heeft u GPS nodig?">
+                <input type="text" name="question_text" required placeholder="Bijv. Heeft u GPS nodig op de laptop?">
             </div>
             
             <div class="form-group">
                 <label>Beschrijving (optioneel)</label>
-                <textarea name="question_description" placeholder="Extra uitleg voor de gebruiker"></textarea>
+                <textarea name="question_description" placeholder="Extra uitleg die onder de vraag verschijnt"></textarea>
             </div>
             
             <div class="form-group">
                 <label>Weging *</label>
                 <input type="number" name="question_weight" step="0.1" min="0.1" max="5" value="1.0" required>
                 <div class="helper-text">
-                    <strong>1.0</strong> = normale vraag | 
-                    <strong>1.5</strong> = belangrijke vraag | 
-                    <strong>0.5</strong> = minder belangrijke vraag
+                    <strong>1.0</strong> = normale vraag | <strong>1.5</strong> = belangrijke vraag | <strong>2.0</strong> = zeer belangrijk
                 </div>
             </div>
             
@@ -435,26 +539,85 @@ if (isset($_GET['edit'])) {
     </div>
 </div>
 
+<!-- Modal: Nieuwe Admin -->
+<div id="addAdminModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('addAdminModal').style.display='none'">&times;</span>
+        <h3>➕ Nieuwe Admin Toevoegen</h3>
+        
+        <form method="post">
+            <div class="form-group">
+                <label>Gebruikersnaam *</label>
+                <input type="text" name="admin_username" required placeholder="bijv. john" autocomplete="off">
+            </div>
+            
+            <div class="form-group">
+                <label>Wachtwoord *</label>
+                <input type="password" name="admin_password" required minlength="6" placeholder="Minimaal 6 tekens" autocomplete="new-password">
+            </div>
+            
+            <div class="form-group">
+                <label>Bevestig Wachtwoord *</label>
+                <input type="password" name="admin_password_confirm" required minlength="6" placeholder="Herhaal wachtwoord" autocomplete="new-password">
+            </div>
+            
+            <button type="submit" name="add_admin" class="btn btn-primary">💾 Admin Aanmaken</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('addAdminModal').style.display='none'">Annuleren</button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Wachtwoord Wijzigen -->
+<div id="passwordModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('passwordModal').style.display='none'">&times;</span>
+        <h3 id="passwordModalTitle">🔑 Wachtwoord Wijzigen</h3>
+        
+        <form method="post">
+            <input type="hidden" name="admin_id" id="change_admin_id">
+            
+            <div class="form-group">
+                <label>Nieuw Wachtwoord *</label>
+                <input type="password" name="new_password" required minlength="6" placeholder="Minimaal 6 tekens" autocomplete="new-password">
+            </div>
+            
+            <div class="form-group">
+                <label>Bevestig Wachtwoord *</label>
+                <input type="password" name="confirm_password" required minlength="6" placeholder="Herhaal wachtwoord" autocomplete="new-password">
+            </div>
+            
+            <button type="submit" name="change_password" class="btn btn-primary">💾 Wachtwoord Opslaan</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('passwordModal').style.display='none'">Annuleren</button>
+        </form>
+    </div>
+</div>
+
 <script>
 function switchTab(tabName) {
-    // Hide all tabs
     const tabs = document.querySelectorAll('.tab');
     const contents = document.querySelectorAll('.tab-content');
     
     tabs.forEach(t => t.classList.remove('active'));
     contents.forEach(c => c.classList.remove('active'));
     
-    // Show selected tab
     event.target.classList.add('active');
     document.getElementById(tabName).classList.add('active');
 }
 
-// Close modal when clicking outside
+function showPasswordModal(adminId, username) {
+    document.getElementById('change_admin_id').value = adminId;
+    document.getElementById('passwordModalTitle').textContent = '🔑 Wachtwoord Wijzigen voor ' + username;
+    document.getElementById('passwordModal').style.display = 'block';
+}
+
 window.onclick = function(event) {
-    const modal = document.getElementById('addModal');
-    if (event.target == modal) {
-        modal.style.display = "none";
-    }
+    const modals = ['addModal', 'addAdminModal', 'passwordModal'];
+    modals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    });
 }
 </script>
 </body>

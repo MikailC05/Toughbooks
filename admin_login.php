@@ -34,64 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Admin Login - Toughbooks</title>
     <link rel="stylesheet" href="assets/css/style.css">
-    <style>
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 40px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        .login-logo {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .login-logo .logo {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 16px;
-            font-size: 2em;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-        }
-        .form-group input {
-            width: 100%;
-            padding: 12px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 6px;
-            color: inherit;
-            font-size: 1em;
-        }
-        .form-group input:focus {
-            outline: none;
-            border-color: rgba(255,255,255,0.3);
-        }
-        .error-message {
-            background: rgba(255,0,0,0.1);
-            color: #ff6b6b;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255,0,0,0.3);
-        }
-        .login-btn {
-            width: 100%;
-            padding: 14px;
-            margin-top: 10px;
-        }
-        .back-link {
-            text-align: center;
-            margin-top: 20px;
-        }
-    </style>
+    
 </head>
 <body>
     <div class="login-container">

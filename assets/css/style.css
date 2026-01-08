@@ -164,6 +164,85 @@ button.cta:hover {
     filter: brightness(0.98)
 }
 
+/* Admin / Login specific styles migrated from inline and page <style> blocks */
+.admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin: 20px 0; }
+.stat-card { background: rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); text-align: center; }
+.stat-number { font-size: 2.5em; font-weight: 700; margin: 8px 0; color: #4CAF50; }
+.tabs { display: flex; gap: 8px; margin: 20px 0; border-bottom: 2px solid rgba(255,255,255,0.1); flex-wrap: wrap; }
+.tab { padding: 12px 24px; cursor: pointer; border-radius: 6px 6px 0 0; background: rgba(255,255,255,0.03); transition: all 0.3s; }
+.tab:hover { background: rgba(255,255,255,0.08); }
+.tab.active { background: rgba(255,255,255,0.1); border-bottom: 3px solid #4CAF50; }
+.tab-content { display: none; padding: 20px 0; }
+.tab-content.active { display: block; }
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; margin-bottom: 8px; font-weight: 500; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: inherit; font-family: inherit; }
+.form-group textarea { min-height: 80px; resize: vertical; }
+.form-group input[type="number"] { width: 150px; }
+.success { background: rgba(0,255,0,0.1); color: #0f0; padding: 12px; border-radius: 6px; margin: 16px 0; border: 1px solid rgba(0,255,0,0.3); }
+.error { background: rgba(255,0,0,0.1); color: #ff6b6b; padding: 12px; border-radius: 6px; margin: 16px 0; border: 1px solid rgba(255,0,0,0.3); }
+.info { background: rgba(33,150,243,0.1); color: #42a5f5; padding: 12px; border-radius: 6px; margin: 16px 0; border: 1px solid rgba(33,150,243,0.3); }
+table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+table th, table td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+table th { font-weight: 600; background: rgba(255,255,255,0.05); }
+table tr:hover { background: rgba(255,255,255,0.02); }
+.btn { padding: 8px 16px; border-radius: 6px; text-decoration: none; display: inline-block; margin: 4px; cursor: pointer; border: none; font-size: 0.9em; }
+.btn-primary { background: #4CAF50; color: white; }
+.btn-danger { background: #f44336; color: white; }
+.btn-secondary { background: rgba(255,255,255,0.1); color: inherit; }
+.btn-small { padding: 4px 8px; font-size: 0.8em; }
+.modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background: rgba(0,0,0,0.8); }
+.modal-content { background: #1a1a1a; margin: 5% auto; padding: 30px; border-radius: 12px; width: 90%; max-width: 600px; border: 1px solid rgba(255,255,255,0.2); max-height: 80vh; overflow-y: auto; }
+.close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; color: #aaa; }
+.close:hover { color: #fff; }
+.score-grid { display: grid; gap: 12px; }
+.score-item { background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
+.helper-text { font-size: 0.85em; color: rgba(255,255,255,0.5); margin-top: 4px; }
+.user-info { display: flex; align-items: center; gap: 16px; }
+.user-badge { background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 20px; font-size: 0.9em; }
+.edit-section { background: rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #4CAF50; }
+.current-user { background: rgba(76,175,80,0.2); }
+
+/* Utilities used to replace inline styles */
+.mb-20 { margin-bottom: 20px !important; }
+.mt-20 { margin-top: 20px !important; }
+.hr-custom { margin: 30px 0; border-color: rgba(255,255,255,0.2); }
+.col-50 { width: 50px; }
+.col-100 { width: 100px; }
+.col-200 { width: 200px; }
+.col-250 { width: 250px; }
+.empty-table { text-align: center; padding: 40px; }
+.emoji-large { font-size: 3em; margin-bottom: 10px; }
+.muted-small { font-size: 0.85em; margin-top: 4px; color: var(--muted); }
+.laptop-heading { margin-top: 20px; color: #4CAF50; }
+.two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.option-label { color: #42a5f5; font-weight: 700; }
+.two-col-input-grid { display: grid; grid-template-columns: 100px 1fr; gap: 8px; margin-top: 8px; }
+.small-label { font-size: 0.8em; }
+.input-full { width: 100%; padding: 6px; }
+.you-badge { color: #4CAF50; font-size: 0.8em; margin-left: 8px; }
+
+/* Login page styles (migrated) */
+.login-container {
+    max-width: 400px;
+    margin: 100px auto;
+    padding: 40px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+.login-logo { text-align: center; margin-bottom: 30px; }
+.login-logo .logo { width: 80px; height: 80px; margin: 0 auto 16px; font-size: 2em; }
+.error-message { background: rgba(255,0,0,0.1); color: #ff6b6b; padding: 12px; border-radius: 6px; margin-bottom: 20px; border: 1px solid rgba(255,0,0,0.3); }
+.login-btn { width: 100%; padding: 14px; margin-top: 10px; }
+.back-link { text-align: center; margin-top: 20px; }
+
+/* small helpers */
+.small-label-inline { font-size:0.8em; }
+
+.weight-badge { color: #4CAF50; font-weight: 600; }
+
+
 .wizard-controls .muted {
     margin-left: 8px;
     color: var(--muted)

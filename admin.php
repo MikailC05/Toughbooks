@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/src/Database.php';
 require_once __DIR__ . '/src/Auth.php';
+require_once __DIR__ . '/src/ToughbookScorer.php';
 
 Auth::requireLogin();
 
@@ -9,6 +10,39 @@ $pdo = Database::getInstance()->getPdo();
 $message = '';
 $error = '';
 $currentUser = Auth::getCurrentUser();
+
+// Initialiseer ToughbookScorer
+$scorer = new ToughbookScorer($pdo, __DIR__ . '/data/toughbooks_configurations.json');
+
+// ============================================================================
+// LAAD TOUGHBOOK CONFIGURATIES
+// ============================================================================
+$configurationsFile = __DIR__ . '/data/toughbooks_configurations.json';
+$toughbookConfigs = [];
+
+if (file_exists($configurationsFile)) {
+    $jsonData = file_get_contents($configurationsFile);
+    $toughbookConfigs = json_decode($jsonData, true) ?? [];
+}
+
+// ============================================================================
+// LAAD GEWONE DATA VOOR ADMIN (STATS, VRAGEN, LAPTOPS, ADMINS)
+// ============================================================================
+try {
+    $laptops = $pdo->query('SELECT id, name, model_code, price_eur, is_active FROM laptops ORDER BY name')->fetchAll();
+    $questions = $pdo->query('SELECT id, text, description, weight, display_order FROM questions ORDER BY display_order')->fetchAll();
+    $adminUsers = $pdo->query('SELECT id, username, created_at FROM admin_users ORDER BY id')->fetchAll();
+    $stats = [
+        'laptops' => count($laptops),
+        'questions' => count($questions),
+        'total_scores' => (int)$pdo->query('SELECT COUNT(*) FROM scores')->fetchColumn(),
+        'admins' => count($adminUsers),
+    ];
+} catch (Exception $e) {
+    $error = 'Fout bij laden van data: ' . $e->getMessage();
+    $laptops = $questions = $adminUsers = [];
+    $stats = ['laptops' => 0, 'questions' => 0, 'total_scores' => 0, 'admins' => 0];
+}
 
 // ============================================================================
 // ADMIN GEBRUIKER TOEVOEGEN
@@ -26,7 +60,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_admin'])) {
         $error = 'Gebruikersnaam mag niet leeg zijn!';
     } else {
         try {
-            // Check of gebruiker al bestaat
             $check = $pdo->prepare('SELECT id FROM admin_users WHERE username = ?');
             $check->execute([$username]);
             
@@ -50,7 +83,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_admin'])) {
 if (isset($_GET['delete_admin'])) {
     $adminId = (int)$_GET['delete_admin'];
     
-    // Voorkom dat gebruiker zichzelf verwijdert
     if ($adminId === $currentUser['id']) {
         $error = 'Je kunt jezelf niet verwijderen!';
     } else {
@@ -127,6 +159,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_question'])) {
     $text = trim($_POST['question_text']);
     $description = trim($_POST['question_description'] ?? '');
     $weight = floatval($_POST['question_weight'] ?? 1.0);
+    $specOption = $_POST['spec_option'] ?? 'none';
+    $pointsIfMatch = intval($_POST['points_if_match'] ?? 30);
     
     if ($text !== '') {
         $pdo->beginTransaction();
@@ -144,15 +178,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_question'])) {
             $optStmt->execute([$qid, 'Nee', 'no', 2]);
             $noId = $pdo->lastInsertId();
             
-            $laptops = $pdo->query('SELECT id FROM laptops WHERE is_active = 1')->fetchAll(PDO::FETCH_COLUMN);
-            $scoreStmt = $pdo->prepare('INSERT INTO scores (laptop_id, option_id, points, reason) VALUES (?, ?, ?, ?)');
-            foreach ($laptops as $lid) {
-                $scoreStmt->execute([$lid, $yesId, 0, 'Standaard score']);
-                $scoreStmt->execute([$lid, $noId, 0, 'Niet van toepassing']);
+            // Ken scores toe op basis van gekozen spec
+            if ($specOption !== 'none') {
+                $specMapping = ToughbookScorer::getSpecMapping($specOption);
+                if ($specMapping) {
+                    $scorer->assignScoresBySpec(
+                        $yesId, 
+                        $noId, 
+                        $specMapping['key'], 
+                        $specMapping['value'],
+                        $pointsIfMatch,
+                        0
+                    );
+                    $message = "Vraag succesvol toegevoegd! Scores zijn automatisch toegewezen op basis van {$specMapping['key']}.";
+                } else {
+                    $scorer->assignDefaultScores($yesId, $noId);
+                    $message = 'Vraag succesvol toegevoegd met standaard scores.';
+                }
+            } else {
+                $scorer->assignDefaultScores($yesId, $noId);
+                $message = 'Vraag succesvol toegevoegd! Je kunt nu de scores handmatig aanpassen door op "Bewerken" te klikken.';
             }
             
             $pdo->commit();
-            $message = 'Vraag succesvol toegevoegd! Je kunt nu de scores aanpassen door op "Bewerken" te klikken.';
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = 'Fout: ' . $e->getMessage();
@@ -206,122 +254,163 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_scores'])) {
 // ============================================================================
 // LAPTOPS BEHEREN (TOEVOEGEN / BIJWERKEN / VERWIJDEREN)
 // ============================================================================
-// Laptop toevoegen
+// Laptop toevoegen (ondersteunt: keuze uit configuraties of handmatige invoer)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_laptop'])) {
-    $name = trim($_POST['laptop_name'] ?? '');
-    $modelCode = trim($_POST['laptop_model_code'] ?? '');
     $price = isset($_POST['laptop_price_eur']) ? floatval($_POST['laptop_price_eur']) : 0.0;
 
-    if ($name === '') {
-        $error = 'Laptop naam mag niet leeg zijn!';
-    } elseif ($price < 0) {
-        $error = 'Prijs kan niet negatief zijn!';
-    } else {
-        try {
-            $normalizedModel = ($modelCode !== '') ? $modelCode : null;
+    $isManual = isset($_POST['manual_entry']) && $_POST['manual_entry'] === '1';
 
-            // Validatie: combinatie van naam + model_code moet uniek zijn
-            $exists = $pdo->prepare('SELECT id FROM laptops WHERE name = ? AND ( (? IS NULL AND model_code IS NULL) OR model_code = ? ) LIMIT 1');
-            $exists->execute([$name, $normalizedModel, $normalizedModel]);
-            if ($exists->fetch()) {
-                $error = 'Deze combinatie van naam en modelcode bestaat al.';
-            } else {
-                $pdo->beginTransaction();
+    if ($isManual) {
+        $modelCode = trim($_POST['manual_model_code'] ?? '');
+        $name = trim($_POST['manual_name'] ?? $modelCode);
+        $description = trim($_POST['manual_description'] ?? '');
+        $specKeys = ['gps','touchscreen','cellular','keyboard','form_factor','display','ram','storage'];
+        $manualSpecs = [];
+        foreach ($specKeys as $k) {
+            if (isset($_POST['manual_' . $k]) && $_POST['manual_' . $k] !== '') {
+                $manualSpecs[$k] = trim($_POST['manual_' . $k]);
+            }
+        }
 
-                $stmt = $pdo->prepare('INSERT INTO laptops (name, model_code, price_eur, is_active) VALUES (?, ?, ?, 1)');
-                $stmt->execute([$name, $normalizedModel, $price]);
-                $laptopId = $pdo->lastInsertId();
+        if ($modelCode === '') {
+            $error = 'Voer een modelcode in voor handmatige toevoeging!';
+        } elseif ($price < 0) {
+            $error = 'Prijs kan niet negatief zijn!';
+        } else {
+            try {
+                $exists = $pdo->prepare('SELECT id FROM laptops WHERE model_code = ? LIMIT 1');
+                $exists->execute([$modelCode]);
+                if ($exists->fetch()) {
+                    $error = 'Deze modelcode bestaat al in de database.';
+                } else {
+                    $pdo->beginTransaction();
+                    $stmt = $pdo->prepare('INSERT INTO laptops (name, model_code, description, price_eur, is_active) VALUES (?, ?, ?, ?, 1)');
+                    $stmt->execute([$name, $modelCode, $description, $price]);
+                    $laptopId = $pdo->lastInsertId();
+                    if (!empty($manualSpecs)) {
+                        $specStmt = $pdo->prepare('INSERT INTO laptop_specs (laptop_id, spec_key, spec_value, spec_type) VALUES (?, ?, ?, ?)');
+                        foreach ($manualSpecs as $key => $val) {
+                            $specStmt->execute([$laptopId, $key, $val, 'text']);
+                        }
+                    }
 
-                // Zorg voor standaard scores voor alle bestaande opties, zodat bewerken werkt
-                $optStmt = $pdo->query('SELECT id FROM options');
-                $optionIds = $optStmt->fetchAll(PDO::FETCH_COLUMN);
-                if (!empty($optionIds)) {
+                    $laptopSpecs = $manualSpecs;
+                    $questionsStmt = $pdo->query('\
+                        SELECT q.id as question_id, q.text as question_text, q.description,\
+                               o.id as option_id, o.value as option_value\
+                        FROM questions q\
+                        JOIN options o ON q.id = o.question_id\
+                        ORDER BY q.id, o.display_order\
+                    ');
+                    $questionsData = $questionsStmt->fetchAll();
                     $scoreStmt = $pdo->prepare('INSERT INTO scores (laptop_id, option_id, points, reason) VALUES (?, ?, ?, ?)');
-                    foreach ($optionIds as $oid) {
-                        $scoreStmt->execute([$laptopId, $oid, 0, 'Standaard score']);
+
+                    foreach ($questionsData as $qData) {
+                        $questionText = strtolower($qData['question_text'] . ' ' . ($qData['description'] ?? ''));
+                        $optionValue = $qData['option_value'];
+                        $points = 0;
+                        $reason = 'Automatisch berekend';
+
+                        if (strpos($questionText, 'gps') !== false) {
+                            $hasGPS = isset($laptopSpecs['gps']) && (strtolower($laptopSpecs['gps']) === 'yes' || stripos($laptopSpecs['gps'],'yes')!==false || strtolower($laptopSpecs['gps'])==='1');
+                            if ($optionValue === 'yes' && $hasGPS) { $points = 30; $reason = 'Heeft GPS'; }
+                            elseif ($optionValue === 'no' && !$hasGPS) { $points = 30; $reason = 'Geen GPS (past bij gebruiker)'; }
+                        } elseif (strpos($questionText, 'touch') !== false) {
+                            $hasTouch = isset($laptopSpecs['touchscreen']) && (strtolower($laptopSpecs['touchscreen']) === 'yes' || stripos($laptopSpecs['touchscreen'],'yes')!==false);
+                            if ($optionValue === 'yes' && $hasTouch) { $points = 30; $reason = 'Heeft touchscreen'; }
+                            elseif ($optionValue === 'no' && !$hasTouch) { $points = 30; $reason = 'Geen touchscreen'; }
+                        } elseif (strpos($questionText, '4g') !== false || strpos($questionText, '5g') !== false || strpos($questionText, 'mobiel') !== false) {
+                            $hasCellular = isset($laptopSpecs['cellular']) && strtolower($laptopSpecs['cellular']) !== 'none' && $laptopSpecs['cellular'] !== '';
+                            if ($optionValue === 'yes' && $hasCellular) { $points = 30; $reason = 'Heeft mobiel internet'; }
+                            elseif ($optionValue === 'no' && !$hasCellular) { $points = 30; $reason = 'Geen mobiel internet'; }
+                        }
+
+                        $scoreStmt->execute([$laptopId, $qData['option_id'], $points, $reason]);
+                    }
+
+                    $pdo->commit();
+                    $message = "Laptop '$name' succesvol toegevoegd (handmatig)! Scores zijn automatisch berekend op basis van de specs.";
+                }
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $error = 'Fout bij toevoegen van laptop: ' . $e->getMessage();
+            }
+        }
+    } else {
+        // config-based
+        $modelCode = trim($_POST['laptop_model_code'] ?? '');
+        if ($modelCode === '') {
+            $error = 'Selecteer een modelcode!';
+        } elseif ($price < 0) {
+            $error = 'Prijs kan niet negatief zijn!';
+        } else {
+            try {
+                $configFound = null; $modelName = '';
+                foreach ($toughbookConfigs as $model => $configs) {
+                    foreach ($configs as $config) {
+                        if ($config['model_code'] === $modelCode) { $configFound = $config; $modelName = $model; break 2; }
                     }
                 }
-
-                $pdo->commit();
-                $message = 'Laptop succesvol toegevoegd!';
-            }
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) { $pdo->rollBack(); }
-            if ($e instanceof PDOException && $e->getCode() === '23000') {
-                $error = 'Deze combinatie van naam en modelcode bestaat al.';
-            } else {
+                if (!$configFound) { $error = 'Modelcode niet gevonden in configuraties!'; }
+                else {
+                    $exists = $pdo->prepare('SELECT id FROM laptops WHERE model_code = ? LIMIT 1');
+                    $exists->execute([$modelCode]);
+                    if ($exists->fetch()) { $error = 'Deze modelcode bestaat al in de database.'; }
+                    else {
+                        $pdo->beginTransaction();
+                        $nameParts = [$modelName];
+                        if (isset($configFound['specs']['ram'])) $nameParts[] = $configFound['specs']['ram'];
+                        if (isset($configFound['specs']['storage'])) $nameParts[] = $configFound['specs']['storage'];
+                        if (isset($configFound['specs']['cellular']) && $configFound['specs']['cellular'] !== 'None') $nameParts[] = $configFound['specs']['cellular'];
+                        $name = implode(' ', $nameParts);
+                        $description = $configFound['description'];
+                        $stmt = $pdo->prepare('INSERT INTO laptops (name, model_code, description, price_eur, is_active) VALUES (?, ?, ?, ?, 1)');
+                        $stmt->execute([$name, $modelCode, $description, $price]);
+                        $laptopId = $pdo->lastInsertId();
+                        if (isset($configFound['specs']) && !empty($configFound['specs'])) {
+                            $specStmt = $pdo->prepare('INSERT INTO laptop_specs (laptop_id, spec_key, spec_value, spec_type) VALUES (?, ?, ?, ?)');
+                            foreach ($configFound['specs'] as $key => $value) $specStmt->execute([$laptopId, $key, $value, 'text']);
+                        }
+                        $laptopSpecs = $configFound['specs'] ?? [];
+                        $questionsStmt = $pdo->query('\
+                            SELECT q.id as question_id, q.text as question_text, q.description,\
+                                   o.id as option_id, o.value as option_value\
+                            FROM questions q\
+                            JOIN options o ON q.id = o.question_id\
+                            ORDER BY q.id, o.display_order\
+                        ');
+                        $questionsData = $questionsStmt->fetchAll();
+                        $scoreStmt = $pdo->prepare('INSERT INTO scores (laptop_id, option_id, points, reason) VALUES (?, ?, ?, ?)');
+                        foreach ($questionsData as $qData) {
+                            $questionText = strtolower($qData['question_text'] . ' ' . ($qData['description'] ?? ''));
+                            $optionValue = $qData['option_value']; $points = 0; $reason = 'Automatisch berekend';
+                            if (strpos($questionText, 'gps') !== false) {
+                                $hasGPS = isset($laptopSpecs['gps']) && $laptopSpecs['gps'] === 'Yes';
+                                if ($optionValue === 'yes' && $hasGPS) { $points = 30; $reason = 'Laptop heeft GPS'; }
+                                elseif ($optionValue === 'no' && !$hasGPS) { $points = 30; $reason = 'Laptop heeft geen GPS (past bij gebruiker)'; }
+                            } elseif (strpos($questionText, 'touch') !== false) {
+                                $hasTouch = isset($laptopSpecs['touchscreen']) && $laptopSpecs['touchscreen'] === 'Yes';
+                                if ($optionValue === 'yes' && $hasTouch) { $points = 30; $reason = 'Laptop heeft touchscreen'; }
+                                elseif ($optionValue === 'no' && !$hasTouch) { $points = 30; $reason = 'Laptop heeft geen touchscreen (past bij gebruiker)'; }
+                            } elseif (strpos($questionText, '4g') !== false || strpos($questionText, '5g') !== false || strpos($questionText, 'mobiel') !== false) {
+                                $hasCellular = isset($laptopSpecs['cellular']) && $laptopSpecs['cellular'] !== 'None';
+                                if ($optionValue === 'yes' && $hasCellular) { $points = 30; $reason = 'Laptop heeft mobiel internet (' . $laptopSpecs['cellular'] . ')'; }
+                                elseif ($optionValue === 'no' && !$hasCellular) { $points = 30; $reason = 'Laptop heeft geen mobiel internet (past bij gebruiker)'; }
+                            }
+                            $scoreStmt->execute([$laptopId, $qData['option_id'], $points, $reason]);
+                        }
+                        $pdo->commit();
+                        $message = "Laptop '$name' succesvol toegevoegd! Scores zijn automatisch berekend op basis van de specs.";
+                    }
+                }
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 $error = 'Fout bij toevoegen van laptop: ' . $e->getMessage();
             }
         }
     }
 }
 
-// Laptop bijwerken
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_laptop'])) {
-    $laptopId = (int)($_POST['laptop_id'] ?? 0);
-    $name = trim($_POST['laptop_name'] ?? '');
-    $modelCode = trim($_POST['laptop_model_code'] ?? '');
-    $price = isset($_POST['laptop_price_eur']) ? floatval($_POST['laptop_price_eur']) : 0.0;
-    $isActive = isset($_POST['laptop_is_active']) ? 1 : 0;
-
-    if ($name === '') {
-        $error = 'Laptop naam mag niet leeg zijn!';
-    } elseif ($price < 0) {
-        $error = 'Prijs kan niet negatief zijn!';
-    } else {
-        try {
-            $normalizedModel = ($modelCode !== '') ? $modelCode : null;
-            // Validatie: combinatie (naam, model_code) mag niet al bestaan bij een andere laptop
-            $exists = $pdo->prepare('SELECT id FROM laptops WHERE name = ? AND ( (? IS NULL AND model_code IS NULL) OR model_code = ? ) AND id <> ? LIMIT 1');
-            $exists->execute([$name, $normalizedModel, $normalizedModel, $laptopId]);
-            if ($exists->fetch()) {
-                $error = 'Deze combinatie van naam en modelcode is al in gebruik.';
-            } else {
-                $stmt = $pdo->prepare('UPDATE laptops SET name = ?, model_code = ?, price_eur = ?, is_active = ? WHERE id = ?');
-                $stmt->execute([$name, $normalizedModel, $price, $isActive, $laptopId]);
-                $message = 'Laptop succesvol bijgewerkt!';
-            }
-        } catch (Exception $e) {
-            if ($e instanceof PDOException && $e->getCode() === '23000') {
-                $error = 'Deze combinatie van naam en modelcode is al in gebruik.';
-            } else {
-                $error = 'Fout bij bijwerken van laptop: ' . $e->getMessage();
-            }
-        }
-    }
-}
-
-// Laptop verwijderen
-if (isset($_GET['delete_laptop'])) {
-    $lid = (int)$_GET['delete_laptop'];
-    try {
-        $pdo->beginTransaction();
-        // Verwijder gekoppelde scores eerst om referentiële fouten te voorkomen
-        $pdo->prepare('DELETE FROM scores WHERE laptop_id = ?')->execute([$lid]);
-        $pdo->prepare('DELETE FROM laptops WHERE id = ?')->execute([$lid]);
-        $pdo->commit();
-        $message = 'Laptop succesvol verwijderd!';
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        $error = 'Fout bij verwijderen van laptop: ' . $e->getMessage();
-    }
-}
-
-// ============================================================================
-// DATA OPHALEN
-// ============================================================================
-$laptops = $pdo->query('SELECT id, name, model_code, price_eur FROM laptops WHERE is_active = 1 ORDER BY name')->fetchAll();
-$questions = $pdo->query('SELECT id, text, description, weight, display_order FROM questions ORDER BY display_order')->fetchAll();
-$adminUsers = $pdo->query('SELECT id, username, created_at FROM admin_users ORDER BY id')->fetchAll();
-
-$stats = [
-    'laptops' => count($laptops),
-    'questions' => count($questions),
-    'total_scores' => $pdo->query('SELECT COUNT(*) FROM scores')->fetchColumn(),
-    'admins' => count($adminUsers)
-];
-
-// Als specifieke vraag geselecteerd voor bewerken
 $editQuestion = null;
 $editScores = [];
 if (isset($_GET['edit'])) {
@@ -331,15 +420,15 @@ if (isset($_GET['edit'])) {
     $editQuestion = $stmt->fetch();
     
     if ($editQuestion) {
-        $scoresStmt = $pdo->query("
-            SELECT s.id, s.laptop_id, s.option_id, s.points, s.reason,
-                   l.name as laptop_name, o.label as option_label
-            FROM scores s
-            JOIN laptops l ON s.laptop_id = l.id
-            JOIN options o ON s.option_id = o.id
-            WHERE o.question_id = {$editId}
-            ORDER BY l.name, o.display_order
-        ");
+        $scoresStmt = $pdo->query(""
+            . "SELECT s.id, s.laptop_id, s.option_id, s.points, s.reason,\n"
+            . "       l.name as laptop_name, o.label as option_label\n"
+            . "FROM scores s\n"
+            . "JOIN laptops l ON s.laptop_id = l.id\n"
+            . "JOIN options o ON s.option_id = o.id\n"
+            . "WHERE o.question_id = {$editId}\n"
+            . "ORDER BY l.name, o.display_order\n"
+        );
         $editScores = $scoresStmt->fetchAll();
     }
 }
@@ -360,7 +449,6 @@ if (isset($_GET['edit_laptop'])) {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Admin - Toughbooks</title>
     <link rel="stylesheet" href="assets/css/style.css">
-    
 </head>
 <body>
 <header class="site-header">
@@ -472,7 +560,7 @@ if (isset($_GET['edit_laptop'])) {
                         <?php 
                         $currentLaptop = '';
                         foreach ($editScores as $score): 
-                                if ($currentLaptop !== $score['laptop_name']): 
+                            if ($currentLaptop !== $score['laptop_name']): 
                                 if ($currentLaptop !== '') echo '</div>';
                                 $currentLaptop = $score['laptop_name'];
                                 echo "<h5 class='laptop-heading'>💻 " . htmlspecialchars($currentLaptop) . "</h5>";
@@ -530,7 +618,7 @@ if (isset($_GET['edit_laptop'])) {
                         <td><strong><?php echo $q['display_order']; ?></strong></td>
                         <td>
                             <strong><?php echo htmlspecialchars($q['text']); ?></strong>
-                                <?php if ($q['description']): ?>
+                            <?php if ($q['description']): ?>
                                 <div class="muted muted-small"><?php echo htmlspecialchars($q['description']); ?></div>
                             <?php endif; ?>
                         </td>
@@ -554,6 +642,7 @@ if (isset($_GET['edit_laptop'])) {
         <button class="cta mb-20" onclick="document.getElementById('addLaptopModal').style.display='block'">
             ➕ Nieuwe Laptop Toevoegen
         </button>
+        <a class="cta secondary mb-20" href="bulk_import.php">📤 Import CSV/Excel</a>
 
         <?php if ($editLaptop): ?>
             <div class="edit-section">
@@ -567,8 +656,9 @@ if (isset($_GET['edit_laptop'])) {
                     </div>
 
                     <div class="form-group">
-                        <label>Model Code (optioneel)</label>
-                        <input type="text" name="laptop_model_code" value="<?php echo htmlspecialchars($editLaptop['model_code'] ?? ''); ?>">
+                        <label>Model Code</label>
+                        <input type="text" name="laptop_model_code" value="<?php echo htmlspecialchars($editLaptop['model_code'] ?? ''); ?>" readonly>
+                        <div class="helper-text">Modelcode kan niet worden gewijzigd na aanmaken.</div>
                     </div>
 
                     <div class="form-group">
@@ -596,17 +686,28 @@ if (isset($_GET['edit_laptop'])) {
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($laptops as $l): ?>
+                <?php if (empty($laptops)): ?>
                 <tr>
-                    <td><strong><?php echo htmlspecialchars($l['name']); ?></strong></td>
-                    <td><?php echo htmlspecialchars($l['model_code'] ?? '-'); ?></td>
-                    <td><strong>€<?php echo number_format($l['price_eur'], 2, ',', '.'); ?></strong></td>
-                    <td>
-                        <a href="?edit_laptop=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
-                        <a href="?delete_laptop=<?php echo $l['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze laptop wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
+                    <td colspan="4" class="empty-table">
+                        <div class="muted">
+                            <div class="emoji-large">💻</div>
+                            Nog geen laptops. Klik op "Nieuwe Laptop Toevoegen" om te beginnen.
+                        </div>
                     </td>
                 </tr>
-                <?php endforeach; ?>
+                <?php else: ?>
+                    <?php foreach ($laptops as $l): ?>
+                    <tr>
+                        <td><strong><?php echo htmlspecialchars($l['name']); ?></strong></td>
+                        <td><?php echo htmlspecialchars($l['model_code'] ?? '-'); ?></td>
+                        <td><strong>€<?php echo number_format($l['price_eur'], 2, ',', '.'); ?></strong></td>
+                        <td>
+                            <a href="?edit_laptop=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
+                            <a href="?delete_laptop=<?php echo $l['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze laptop wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -664,7 +765,7 @@ if (isset($_GET['edit_laptop'])) {
         <h3>➕ Nieuwe Vraag Toevoegen</h3>
         
         <div class="info mb-20">
-            ℹ️ Na het toevoegen kun je de scores per laptop instellen door op "Bewerken" te klikken.
+            ℹ️ Selecteer welke Toughbook-specificatie bij deze vraag hoort. Het systeem wijst automatisch punten toe aan laptops op basis van hun specs!
         </div>
         
         <form method="post">
@@ -676,6 +777,26 @@ if (isset($_GET['edit_laptop'])) {
             <div class="form-group">
                 <label>Beschrijving (optioneel)</label>
                 <textarea name="question_description" placeholder="Extra uitleg die onder de vraag verschijnt"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Welke specificatie hoort bij deze vraag? *</label>
+                <select name="spec_option" id="spec_option" required>
+                    <?php foreach (ToughbookScorer::getAvailableSpecOptions() as $value => $label): ?>
+                        <option value="<?php echo $value; ?>"><?php echo htmlspecialchars($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="helper-text">
+                    <strong>Belangrijk:</strong> Als je bijv. "GPS Module" selecteert, krijgen Toughbooks MET GPS automatisch punten als de klant "Ja" antwoordt.
+                </div>
+            </div>
+            
+            <div class="form-group" id="points_group">
+                <label>Hoeveel punten bij match?</label>
+                <input type="number" name="points_if_match" min="0" max="100" value="30">
+                <div class="helper-text">
+                    Als een Toughbook de gekozen spec heeft en de klant antwoordt "Ja", krijgt die laptop deze punten.
+                </div>
             </div>
             
             <div class="form-group">
@@ -691,6 +812,18 @@ if (isset($_GET['edit_laptop'])) {
         </form>
     </div>
 </div>
+
+<script>
+// Toon/verberg punten veld op basis van spec keuze
+document.getElementById('spec_option')?.addEventListener('change', function() {
+    const pointsGroup = document.getElementById('points_group');
+    if (this.value === 'none') {
+        pointsGroup.style.display = 'none';
+    } else {
+        pointsGroup.style.display = 'block';
+    }
+});
+</script>
 
 <!-- Modal: Nieuwe Admin -->
 <div id="addAdminModal" class="modal">
@@ -745,21 +878,81 @@ if (isset($_GET['edit_laptop'])) {
     </div>
 </div>
 
-<!-- Modal: Nieuwe Laptop -->
+<!-- Modal: Nieuwe Laptop (MET MODELCODE DROPDOWN) -->
 <div id="addLaptopModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content modal-wide">
         <span class="close" onclick="document.getElementById('addLaptopModal').style.display='none'">&times;</span>
         <h3>➕ Nieuwe Laptop Toevoegen</h3>
 
+        <div class="info mb-20">
+            ℹ️ <strong>Selecteer een modelcode uit de lijst</strong> - de specs worden automatisch uit de configuraties geladen. Scores worden automatisch berekend op basis van de ingestelde vragen!
+        </div>
+
         <form method="post">
             <div class="form-group">
-                <label>Naam *</label>
-                <input type="text" name="laptop_name" required placeholder="Bijv. Toughbook 55">
-            </div>
+                <label>Toevoegmethode *</label>
+                <div>
+                    <label style="margin-right:1rem;"><input type="radio" name="entry_mode" value="config" checked> Kies uit configuraties</label>
+                    <label><input type="radio" name="entry_mode" value="manual"> Handmatige invoer</label>
+                </div>
+                <div id="config_select">
+                    <select name="laptop_model_code" style="width: 100%; padding: 0.75rem; font-size: 0.95rem; margin-top:0.5rem;">
+                        <option value="">-- Selecteer een Toughbook configuratie --</option>
+                        <?php foreach ($toughbookConfigs as $modelName => $configs): ?>
+                            <optgroup label="<?php echo htmlspecialchars($modelName); ?>">
+                                <?php foreach ($configs as $config): ?>
+                                    <?php
+                                    // Maak een leesbare optie label
+                                    $label = $config['model_code'] . ' - ';
+                                    $specParts = [];
+                                    if (isset($config['specs']['ram'])) $specParts[] = $config['specs']['ram'];
+                                    if (isset($config['specs']['storage'])) $specParts[] = $config['specs']['storage'];
+                                    if (isset($config['specs']['cellular'])) $specParts[] = $config['specs']['cellular'];
+                                    if (isset($config['specs']['gps'])) $specParts[] = 'GPS';
+                                    if (isset($config['specs']['touchscreen'])) $specParts[] = 'Touch: ' . $config['specs']['touchscreen'];
+                                    if (isset($config['specs']['keyboard'])) $specParts[] = $config['specs']['keyboard'];
+                                    if (isset($config['specs']['form_factor'])) $specParts[] = $config['specs']['form_factor'];
+                                    $label .= implode(', ', $specParts);
+                                    ?>
+                                    <option value="<?php echo htmlspecialchars($config['model_code']); ?>">
+                                        <?php echo htmlspecialchars($label); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </optgroup>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
-            <div class="form-group">
-                <label>Model Code (optioneel)</label>
-                <input type="text" name="laptop_model_code" placeholder="Bijv. FZ-55...">
+                <div id="manual_fields" style="display:none; margin-top:0.75rem;">
+                    <div class="form-group">
+                        <label>Model Code *</label>
+                        <input type="text" name="manual_model_code" placeholder="Bijv. CF-33ABC123">
+                    </div>
+                    <div class="form-group">
+                        <label>Naam</label>
+                        <input type="text" name="manual_name" placeholder="Leesbare naam (optioneel)">
+                    </div>
+                    <div class="form-group">
+                        <label>Beschrijving</label>
+                        <input type="text" name="manual_description" placeholder="Korte omschrijving">
+                    </div>
+                    <div class="form-group">
+                        <label>Specs (optioneel)</label>
+                        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;">
+                            <input type="text" name="manual_ram" placeholder="ram (bijv. 16GB)">
+                            <input type="text" name="manual_storage" placeholder="storage (bijv. 512GB SSD)">
+                            <input type="text" name="manual_cellular" placeholder="cellular (bijv. 4G / None)">
+                            <input type="text" name="manual_gps" placeholder="gps (Yes / No)">
+                            <input type="text" name="manual_touchscreen" placeholder="touchscreen (Yes / No)">
+                            <input type="text" name="manual_keyboard" placeholder="keyboard (AZERTY / QWERTY)">
+                            <input type="text" name="manual_form_factor" placeholder="form_factor (Tablet Only / 2-in-1)">
+                            <input type="text" name="manual_display" placeholder="display (FHD / HD)">
+                        </div>
+                    </div>
+                </div>
+                <div class="helper-text">
+                    Selecteer de exacte configuratie. De scores voor vragen worden automatisch berekend op basis van de specs van deze laptop!
+                </div>
             </div>
 
             <div class="form-group">
@@ -767,12 +960,18 @@ if (isset($_GET['edit_laptop'])) {
                 <input type="number" name="laptop_price_eur" step="0.01" min="0" value="0.00" required>
             </div>
 
-            <button type="submit" name="add_laptop" class="btn btn-primary">💾 Laptop Toevoegen</button>
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('addLaptopModal').style.display='none'">Annuleren</button>
+                        <input type="hidden" name="manual_entry" id="manual_entry" value="0">
+                        <button type="submit" name="add_laptop" class="btn btn-primary">💾 Laptop Toevoegen</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('addLaptopModal').style.display='none'">Annuleren</button>
         </form>
     </div>
-    
 </div>
+
+<style>
+.modal-wide {
+    max-width: 800px;
+}
+</style>
 
 <script>
 function switchTab(tabName) {
@@ -803,6 +1002,16 @@ window.onclick = function(event) {
         }
     });
 }
+
+// Toggle manual/config fields
+document.querySelectorAll('input[name="entry_mode"]').forEach(function(el){
+    el.addEventListener('change', function(){
+        const mode = document.querySelector('input[name="entry_mode"]:checked').value;
+        document.getElementById('config_select').style.display = (mode === 'config') ? 'block' : 'none';
+        document.getElementById('manual_fields').style.display = (mode === 'manual') ? 'block' : 'none';
+        document.getElementById('manual_entry').value = (mode === 'manual') ? '1' : '0';
+    });
+});
 
 // Activeer automatisch de Laptops-tab bij relevante acties
 <?php if (isset($_GET['edit_laptop']) || (isset($_POST['add_laptop']) || isset($_POST['update_laptop']))): ?>

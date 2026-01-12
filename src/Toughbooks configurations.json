@@ -1,0 +1,237 @@
+{
+  "Toughbook CF-33": [
+    {
+      "model_code": "CF-33YAAACB4",
+      "description": "Toughbook CF-33 MK4 Tablet only Digitiser - WWAN 4G + e-sim & GPS included - 512GB SSD - front & rear cam - 16GB Mem - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "form_factor": "Tablet Only"
+      }
+    },
+    {
+      "model_code": "CF-339AAACB4",
+      "description": "Toughbook CF-33 MK4 2-1 Detachable Digitiser - Qwerty US key. - WWAN 4G + e-sim & GPS included - 512GB SSD - cam - 16GB Mem - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "keyboard": "QWERTY (US/INT)",
+        "form_factor": "2-in-1 Detachable"
+      }
+    },
+    {
+      "model_code": "CF-339AAACBL",
+      "description": "Toughbook CF-33 MK4 2-1 Detachable Digitiser - Azerty BE key. - WWAN 4G + e-sim & GPS included - 512GB SSD - cam - 16GB Mem - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "keyboard": "AZERTY (BE)",
+        "form_factor": "2-in-1 Detachable"
+      }
+    },
+    {
+      "model_code": "CF-33YAAAXB4",
+      "description": "Toughbook CF-33 MK4 Tablet only Digitiser - WLAN only - 512GB SSD - front & rear cam - 16GB Mem - 3yr Tough Protect (NO RF)",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "form_factor": "Tablet Only"
+      }
+    },
+    {
+      "model_code": "CF-339Z00CB4",
+      "description": "Toughbook CF-33 MK4 2-1 Detachable Digitiser - Qwerty US key. - WLAN only - 512GB SSD - cam - 16GB Mem - 3yr Tough Protect (NO RF)",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "keyboard": "QWERTY (US/INT)",
+        "form_factor": "2-in-1 Detachable"
+      }
+    },
+    {
+      "model_code": "CF-339Z01AB4",
+      "description": "Toughbook CF-33 MK4 2-1 Detachable Digitiser - Azerty BE key. - WLAN only - 512GB SSD - cam - 16GB Mem - 3yr Tough Protect (NO RF)",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "keyboard": "AZERTY (BE)",
+        "form_factor": "2-in-1 Detachable"
+      }
+    },
+    {
+      "model_code": "CF-33YZ01CB4",
+      "description": "Toughbook CF-33 MK4 Tablet only Digitiser - WWAN 5G + e-sim & GPS included - 512GB SSD - front & rear cam - 16GB Mem - 6+6 batt - 3yr Tough Protect ",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "5G",
+        "gps": "Yes",
+        "form_factor": "Tablet Only"
+      }
+    }
+  ],
+  "Toughbook FZ-40": [
+    {
+      "model_code": "FZ-40FZ00NB4",
+      "description": "Toughbook FZ-40mk2 14\" FHD Touch BE Azerty Backlit Keyb. - WLAN only - 512GB SSD - 16GB Mem - Webcam - 3yr ToughWar.",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "touchscreen": "Yes",
+        "display": "FHD",
+        "keyboard": "AZERTY (BE)"
+      }
+    },
+    {
+      "model_code": "FZ-40FZ00MB4",
+      "description": "Toughbook FZ-40mk2 14\" FHD Touch Qwerty Int. Backlit Keyb. - WLAN only - 512GB SSD - 16GB Mem - Webcam - 3yr ToughWar.",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "touchscreen": "Yes",
+        "display": "FHD",
+        "keyboard": "QWERTY (US/INT)"
+      }
+    },
+    {
+      "model_code": "FZ-40FZ003B4",
+      "description": "Toughbook FZ-40mk2 14\" FHD Touch BE Azerty Backlit Keyb. - WWAN 4G & GPS included - 512GB SSD - 16GB Mem - Webcam - 3yr ToughWar.",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "touchscreen": "Yes",
+        "display": "FHD",
+        "keyboard": "AZERTY (BE)"
+      }
+    },
+    {
+      "model_code": "FZ-40FZ00CB4",
+      "description": "Toughbook FZ-40mk2 14\" FHD Touch Qwerty Int. Backlit Keyb. - WWAN 4G & GPS included - 512GB SSD - 16GB Mem - Webcam - 3yr ToughWar.",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "touchscreen": "Yes",
+        "display": "FHD",
+        "keyboard": "QWERTY (US/INT)"
+      }
+    }
+  ],
+  "Toughbook FZ-55": [
+    {
+      "model_code": "FZ-55GZ00WB4",
+      "description": "Toughbook FZ-55mk3 14\" HD non-Touch BE Azerty Keyb. - WLAN only - 512GB SSD - 16GB Mem - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "touchscreen": "No",
+        "display": "HD",
+        "keyboard": "AZERTY (BE)"
+      }
+    },
+    {
+      "model_code": "FZ-55G6601B4",
+      "description": "Toughbook FZ-55mk3 14\" HD non-Touch Qwerty Int. Keyb. - WLAN only - 512GB SSD - 16GB Mem - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "touchscreen": "No",
+        "display": "HD",
+        "keyboard": "QWERTY (US/INT)"
+      }
+    },
+    {
+      "model_code": "FZ-55GZ00XB4",
+      "description": "Toughbook FZ-55mk3 14\" HD non-Touch BE Azerty Keyb. - WWAN 4G & GPS included - 512GB SSD - 16GB Mem -  3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "touchscreen": "No",
+        "display": "HD",
+        "keyboard": "AZERTY (BE)"
+      }
+    },
+    {
+      "model_code": "FZ-55GZ010B4",
+      "description": "Toughbook FZ-55mk3 14\" HD non-Touch Qwerty Int.Keyb. - WWAN 4G & GPS included - 512GB SSD - 16GB Mem -  3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "touchscreen": "No",
+        "display": "HD",
+        "keyboard": "QWERTY (US/INT)"
+      }
+    },
+    {
+      "model_code": "FZ-55JZ00YB4",
+      "description": "Toughbook FZ-55mk3 14\" FHD Touch BE Azerty Keyb. - WLAN only - 512GB SSD - 16GB Mem - webcam - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "touchscreen": "Yes",
+        "display": "FHD",
+        "keyboard": "AZERTY (BE)"
+      }
+    },
+    {
+      "model_code": "FZ-55J2601B4",
+      "description": "Toughbook FZ-55mk3 14\" FHD Touch Qwerty Int.Keyb. - WLAN only - 512GB SSD - 16GB Mem - webcam - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "None",
+        "touchscreen": "Yes",
+        "display": "FHD",
+        "keyboard": "QWERTY (US/INT)"
+      }
+    },
+    {
+      "model_code": "FZ-55JZ00ZB4",
+      "description": "Toughbook FZ-55mk3 14\" FHD Touch BE Azerty Keyb. - WWAN 4G & GPS included - 512GB SSD - 16GB Mem - webcam - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "touchscreen": "Yes",
+        "display": "FHD",
+        "keyboard": "AZERTY (BE)"
+      }
+    },
+    {
+      "model_code": "FZ-55JZ011B4",
+      "description": "Toughbook FZ-55mk3 14\" FHD Touch Qwerty Int.Keyb. - WWAN 4G & GPS included - 512GB SSD - 16GB Mem - webcam - 3yr Tough Protect",
+      "specs": {
+        "ram": "16GB",
+        "storage": "512GB SSD",
+        "cellular": "4G",
+        "gps": "Yes",
+        "touchscreen": "Yes",
+        "display": "FHD",
+        "keyboard": "QWERTY (US/INT)"
+      }
+    }
+  ],
+  "Toughpad FZ-G2": []
+}

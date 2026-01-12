@@ -338,7 +338,7 @@ ALTER TABLE `categories`
 --
 ALTER TABLE `laptops`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `name` (`name`);
+   ADD UNIQUE KEY `unique_name_model` (`name`,`model_code`);
 
 --
 -- Indexen voor tabel `laptop_categories`

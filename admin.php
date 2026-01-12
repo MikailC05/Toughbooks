@@ -204,6 +204,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_scores'])) {
 }
 
 // ============================================================================
+// LAPTOPS BEHEREN (TOEVOEGEN / BIJWERKEN / VERWIJDEREN)
+// ============================================================================
+// Laptop toevoegen
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_laptop'])) {
+    $name = trim($_POST['laptop_name'] ?? '');
+    $modelCode = trim($_POST['laptop_model_code'] ?? '');
+    $price = isset($_POST['laptop_price_eur']) ? floatval($_POST['laptop_price_eur']) : 0.0;
+
+    if ($name === '') {
+        $error = 'Laptop naam mag niet leeg zijn!';
+    } elseif ($price < 0) {
+        $error = 'Prijs kan niet negatief zijn!';
+    } else {
+        try {
+            $normalizedModel = ($modelCode !== '') ? $modelCode : null;
+
+            // Validatie: combinatie van naam + model_code moet uniek zijn
+            $exists = $pdo->prepare('SELECT id FROM laptops WHERE name = ? AND ( (? IS NULL AND model_code IS NULL) OR model_code = ? ) LIMIT 1');
+            $exists->execute([$name, $normalizedModel, $normalizedModel]);
+            if ($exists->fetch()) {
+                $error = 'Deze combinatie van naam en modelcode bestaat al.';
+            } else {
+                $pdo->beginTransaction();
+
+                $stmt = $pdo->prepare('INSERT INTO laptops (name, model_code, price_eur, is_active) VALUES (?, ?, ?, 1)');
+                $stmt->execute([$name, $normalizedModel, $price]);
+                $laptopId = $pdo->lastInsertId();
+
+                // Zorg voor standaard scores voor alle bestaande opties, zodat bewerken werkt
+                $optStmt = $pdo->query('SELECT id FROM options');
+                $optionIds = $optStmt->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($optionIds)) {
+                    $scoreStmt = $pdo->prepare('INSERT INTO scores (laptop_id, option_id, points, reason) VALUES (?, ?, ?, ?)');
+                    foreach ($optionIds as $oid) {
+                        $scoreStmt->execute([$laptopId, $oid, 0, 'Standaard score']);
+                    }
+                }
+
+                $pdo->commit();
+                $message = 'Laptop succesvol toegevoegd!';
+            }
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            if ($e instanceof PDOException && $e->getCode() === '23000') {
+                $error = 'Deze combinatie van naam en modelcode bestaat al.';
+            } else {
+                $error = 'Fout bij toevoegen van laptop: ' . $e->getMessage();
+            }
+        }
+    }
+}
+
+// Laptop bijwerken
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_laptop'])) {
+    $laptopId = (int)($_POST['laptop_id'] ?? 0);
+    $name = trim($_POST['laptop_name'] ?? '');
+    $modelCode = trim($_POST['laptop_model_code'] ?? '');
+    $price = isset($_POST['laptop_price_eur']) ? floatval($_POST['laptop_price_eur']) : 0.0;
+    $isActive = isset($_POST['laptop_is_active']) ? 1 : 0;
+
+    if ($name === '') {
+        $error = 'Laptop naam mag niet leeg zijn!';
+    } elseif ($price < 0) {
+        $error = 'Prijs kan niet negatief zijn!';
+    } else {
+        try {
+            $normalizedModel = ($modelCode !== '') ? $modelCode : null;
+            // Validatie: combinatie (naam, model_code) mag niet al bestaan bij een andere laptop
+            $exists = $pdo->prepare('SELECT id FROM laptops WHERE name = ? AND ( (? IS NULL AND model_code IS NULL) OR model_code = ? ) AND id <> ? LIMIT 1');
+            $exists->execute([$name, $normalizedModel, $normalizedModel, $laptopId]);
+            if ($exists->fetch()) {
+                $error = 'Deze combinatie van naam en modelcode is al in gebruik.';
+            } else {
+                $stmt = $pdo->prepare('UPDATE laptops SET name = ?, model_code = ?, price_eur = ?, is_active = ? WHERE id = ?');
+                $stmt->execute([$name, $normalizedModel, $price, $isActive, $laptopId]);
+                $message = 'Laptop succesvol bijgewerkt!';
+            }
+        } catch (Exception $e) {
+            if ($e instanceof PDOException && $e->getCode() === '23000') {
+                $error = 'Deze combinatie van naam en modelcode is al in gebruik.';
+            } else {
+                $error = 'Fout bij bijwerken van laptop: ' . $e->getMessage();
+            }
+        }
+    }
+}
+
+// Laptop verwijderen
+if (isset($_GET['delete_laptop'])) {
+    $lid = (int)$_GET['delete_laptop'];
+    try {
+        $pdo->beginTransaction();
+        // Verwijder gekoppelde scores eerst om referentiële fouten te voorkomen
+        $pdo->prepare('DELETE FROM scores WHERE laptop_id = ?')->execute([$lid]);
+        $pdo->prepare('DELETE FROM laptops WHERE id = ?')->execute([$lid]);
+        $pdo->commit();
+        $message = 'Laptop succesvol verwijderd!';
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        $error = 'Fout bij verwijderen van laptop: ' . $e->getMessage();
+    }
+}
+
+// ============================================================================
 // DATA OPHALEN
 // ============================================================================
 $laptops = $pdo->query('SELECT id, name, model_code, price_eur FROM laptops WHERE is_active = 1 ORDER BY name')->fetchAll();
@@ -238,6 +342,15 @@ if (isset($_GET['edit'])) {
         ");
         $editScores = $scoresStmt->fetchAll();
     }
+}
+
+// Als specifieke laptop geselecteerd voor bewerken
+$editLaptop = null;
+if (isset($_GET['edit_laptop'])) {
+    $editId = (int)$_GET['edit_laptop'];
+    $stmt = $pdo->prepare('SELECT id, name, model_code, price_eur, is_active FROM laptops WHERE id = ?');
+    $stmt->execute([$editId]);
+    $editLaptop = $stmt->fetch();
 }
 ?>
 <!doctype html>
@@ -437,6 +550,41 @@ if (isset($_GET['edit'])) {
     <div id="laptops" class="tab-content">
         <h3>Toughbook Modellen</h3>
         <p class="muted">Dit zijn de laptops waar klanten uit kunnen kiezen op basis van hun antwoorden.</p>
+
+        <button class="cta mb-20" onclick="document.getElementById('addLaptopModal').style.display='block'">
+            ➕ Nieuwe Laptop Toevoegen
+        </button>
+
+        <?php if ($editLaptop): ?>
+            <div class="edit-section">
+                <h4>✏️ Laptop Bewerken</h4>
+                <form method="post">
+                    <input type="hidden" name="laptop_id" value="<?php echo $editLaptop['id']; ?>">
+
+                    <div class="form-group">
+                        <label>Naam *</label>
+                        <input type="text" name="laptop_name" value="<?php echo htmlspecialchars($editLaptop['name']); ?>" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Model Code (optioneel)</label>
+                        <input type="text" name="laptop_model_code" value="<?php echo htmlspecialchars($editLaptop['model_code'] ?? ''); ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Prijs (EUR) *</label>
+                        <input type="number" name="laptop_price_eur" step="0.01" min="0" value="<?php echo htmlspecialchars(number_format((float)$editLaptop['price_eur'], 2, '.', '')); ?>" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label><input type="checkbox" name="laptop_is_active" <?php echo !empty($editLaptop['is_active']) ? 'checked' : ''; ?>> Actief</label>
+                    </div>
+
+                    <button type="submit" name="update_laptop" class="btn btn-primary">💾 Laptop Opslaan</button>
+                    <a href="admin.php" class="btn btn-secondary">❌ Annuleren</a>
+                </form>
+            </div>
+        <?php endif; ?>
         
         <table>
             <thead>
@@ -444,6 +592,7 @@ if (isset($_GET['edit'])) {
                     <th>Naam</th>
                     <th>Model Code</th>
                     <th>Prijs</th>
+                    <th class="col-200">Acties</th>
                 </tr>
             </thead>
             <tbody>
@@ -452,6 +601,10 @@ if (isset($_GET['edit'])) {
                     <td><strong><?php echo htmlspecialchars($l['name']); ?></strong></td>
                     <td><?php echo htmlspecialchars($l['model_code'] ?? '-'); ?></td>
                     <td><strong>€<?php echo number_format($l['price_eur'], 2, ',', '.'); ?></strong></td>
+                    <td>
+                        <a href="?edit_laptop=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
+                        <a href="?delete_laptop=<?php echo $l['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze laptop wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -592,6 +745,35 @@ if (isset($_GET['edit'])) {
     </div>
 </div>
 
+<!-- Modal: Nieuwe Laptop -->
+<div id="addLaptopModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('addLaptopModal').style.display='none'">&times;</span>
+        <h3>➕ Nieuwe Laptop Toevoegen</h3>
+
+        <form method="post">
+            <div class="form-group">
+                <label>Naam *</label>
+                <input type="text" name="laptop_name" required placeholder="Bijv. Toughbook 55">
+            </div>
+
+            <div class="form-group">
+                <label>Model Code (optioneel)</label>
+                <input type="text" name="laptop_model_code" placeholder="Bijv. FZ-55...">
+            </div>
+
+            <div class="form-group">
+                <label>Prijs (EUR) *</label>
+                <input type="number" name="laptop_price_eur" step="0.01" min="0" value="0.00" required>
+            </div>
+
+            <button type="submit" name="add_laptop" class="btn btn-primary">💾 Laptop Toevoegen</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('addLaptopModal').style.display='none'">Annuleren</button>
+        </form>
+    </div>
+    
+</div>
+
 <script>
 function switchTab(tabName) {
     const tabs = document.querySelectorAll('.tab');
@@ -599,9 +781,11 @@ function switchTab(tabName) {
     
     tabs.forEach(t => t.classList.remove('active'));
     contents.forEach(c => c.classList.remove('active'));
-    
-    event.target.classList.add('active');
-    document.getElementById(tabName).classList.add('active');
+
+    const targetTab = Array.from(tabs).find(t => t.getAttribute('onclick') && t.getAttribute('onclick').includes("'" + tabName + "'"));
+    if (targetTab) targetTab.classList.add('active');
+    const targetContent = document.getElementById(tabName);
+    if (targetContent) targetContent.classList.add('active');
 }
 
 function showPasswordModal(adminId, username) {
@@ -611,7 +795,7 @@ function showPasswordModal(adminId, username) {
 }
 
 window.onclick = function(event) {
-    const modals = ['addModal', 'addAdminModal', 'passwordModal'];
+    const modals = ['addModal', 'addAdminModal', 'passwordModal', 'addLaptopModal'];
     modals.forEach(modalId => {
         const modal = document.getElementById(modalId);
         if (event.target == modal) {
@@ -619,6 +803,11 @@ window.onclick = function(event) {
         }
     });
 }
+
+// Activeer automatisch de Laptops-tab bij relevante acties
+<?php if (isset($_GET['edit_laptop']) || (isset($_POST['add_laptop']) || isset($_POST['update_laptop']))): ?>
+document.addEventListener('DOMContentLoaded', function(){ switchTab('laptops'); });
+<?php endif; ?>
 </script>
 </body>
 </html>

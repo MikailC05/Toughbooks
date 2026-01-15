@@ -27,6 +27,18 @@ if (isset($_SESSION['flash_results'])) {
     $results = $_SESSION['flash_results'];
     unset($_SESSION['flash_results']);
 }
+
+function allScoresZero(?array $results): bool {
+    if (empty($results)) {
+        return true;
+    }
+    foreach ($results as $r) {
+        if ((float)($r['points'] ?? 0) > 0) {
+            return false;
+        }
+    }
+    return true;
+}
 ?>
 <!doctype html>
 <html lang="nl">
@@ -83,38 +95,67 @@ if (isset($_SESSION['flash_results'])) {
 
     <?php if ($results !== null): ?>
     <section class="results">
-        <h3>Beste matches</h3>
-        <div class="laptop-list">
-            <?php foreach ($results as $r): ?>
-                <article class="card">
-                    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                        <h3><?php echo htmlspecialchars($r['name']); ?></h3>
-                        <span class="muted"><?php echo round($r['points']); ?> punten</span>
+        <?php $zero = allScoresZero($results); ?>
+        <?php if ($zero): ?>
+            <div class="info" style="margin-bottom:16px;">
+                ℹ️ Er zijn nog geen matches ingesteld. Ga naar <a href="admin.php">Admin</a> en vink per laptop per vraag aan wat past.
+            </div>
+        <?php endif; ?>
+
+        <?php $best = $results[0] ?? null; ?>
+        <?php if ($best): ?>
+            <h3>Aanbevolen laptop</h3>
+            <article class="card" style="border:2px solid rgba(0,0,0,0.08);">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px;">
+                    <h3 style="margin:0;"><?php echo htmlspecialchars($best['name']); ?></h3>
+                    <span class="muted"><?php echo round($best['points']); ?> score</span>
+                </div>
+
+                <?php if (!empty($best['model_code'])): ?>
+                    <div class="muted" style="margin-bottom:8px;">Model: <?php echo htmlspecialchars($best['model_code']); ?></div>
+                <?php endif; ?>
+
+                <?php if (!empty($best['description'])): ?>
+                    <p style="margin:8px 0;"><?php echo htmlspecialchars($best['description']); ?></p>
+                <?php endif; ?>
+
+                <?php if (!empty($best['reasons'])): ?>
+                    <div style="margin-top:12px;">
+                        <strong style="font-size:0.9em;">Waarom deze laptop:</strong>
+                        <ul style="margin:8px 0 0 20px;font-size:0.9em;">
+                            <?php foreach (array_slice($best['reasons'], 0, 3) as $reason): ?>
+                                <li class="muted"><?php echo htmlspecialchars($reason); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
                     </div>
-                    
-                    <?php if ($r['description']): ?>
-                        <p style="margin:8px 0;"><?php echo htmlspecialchars($r['description']); ?></p>
-                    <?php endif; ?>
-                    
-                    <?php if (!empty($r['reasons'])): ?>
-                        <div style="margin-top:12px;">
-                            <strong style="font-size:0.9em;">Waarom deze laptop:</strong>
-                            <ul style="margin:8px 0 0 20px;font-size:0.9em;">
-                                <?php foreach (array_slice($r['reasons'], 0, 3) as $reason): ?>
-                                    <li class="muted"><?php echo htmlspecialchars($reason); ?></li>
-                                <?php endforeach; ?>
-                            </ul>
+                <?php endif; ?>
+
+                <?php if (!empty($best['price_eur'])): ?>
+                    <div style="margin-top:12px;font-size:1.1em;font-weight:600;">
+                        €<?php echo number_format($best['price_eur'], 2, ',', '.'); ?>
+                    </div>
+                <?php endif; ?>
+            </article>
+        <?php endif; ?>
+
+        <?php if (!$zero && !empty($results) && count($results) > 1): ?>
+            <h3 style="margin-top:20px;">Andere matches</h3>
+            <div class="laptop-list">
+                <?php foreach (array_slice($results, 1, 3) as $r): ?>
+                    <article class="card">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                            <h3><?php echo htmlspecialchars($r['name']); ?></h3>
+                            <span class="muted"><?php echo round($r['points']); ?> score</span>
                         </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($r['price_eur']): ?>
-                        <div style="margin-top:12px;font-size:1.1em;font-weight:600;">
-                            €<?php echo number_format($r['price_eur'], 2, ',', '.'); ?>
-                        </div>
-                    <?php endif; ?>
-                </article>
-            <?php endforeach; ?>
-        </div>
+                        <?php if (!empty($r['price_eur'])): ?>
+                            <div style="margin-top:12px;font-size:1.1em;font-weight:600;">
+                                €<?php echo number_format($r['price_eur'], 2, ',', '.'); ?>
+                            </div>
+                        <?php endif; ?>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
     </section>
     <?php endif; ?>
 </main>

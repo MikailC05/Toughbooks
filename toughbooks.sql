@@ -143,6 +143,40 @@ CREATE TABLE `laptop_specs` (
 -- --------------------------------------------------------
 
 --
+-- Tabelstructuur voor tabel `laptop_config_fields`
+--
+
+CREATE TABLE `laptop_config_fields` (
+  `id` int(11) NOT NULL,
+  `laptop_id` int(11) NOT NULL,
+  `field_key` varchar(64) NOT NULL,
+  `field_label` varchar(255) NOT NULL,
+  `field_type` varchar(20) NOT NULL,
+  `default_value` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `sort_order` int(11) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tabelstructuur voor tabel `laptop_config_field_options`
+--
+
+CREATE TABLE `laptop_config_field_options` (
+  `id` int(11) NOT NULL,
+  `field_id` int(11) NOT NULL,
+  `option_label` varchar(255) NOT NULL,
+  `option_value` varchar(255) NOT NULL,
+  `sort_order` int(11) DEFAULT 0,
+  `is_default` tinyint(1) DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Tabelstructuur voor tabel `options`
 --
 
@@ -355,6 +389,21 @@ ALTER TABLE `laptop_specs`
   ADD UNIQUE KEY `unique_laptop_spec` (`laptop_id`,`spec_key`);
 
 --
+-- Indexen voor tabel `laptop_config_fields`
+--
+ALTER TABLE `laptop_config_fields`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_laptop_field` (`laptop_id`,`field_key`),
+  ADD KEY `idx_laptop` (`laptop_id`);
+
+--
+-- Indexen voor tabel `laptop_config_field_options`
+--
+ALTER TABLE `laptop_config_field_options`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_field` (`field_id`);
+
+--
 -- Indexen voor tabel `options`
 --
 ALTER TABLE `options`
@@ -433,6 +482,18 @@ ALTER TABLE `laptop_specs`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT voor een tabel `laptop_config_fields`
+--
+ALTER TABLE `laptop_config_fields`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT voor een tabel `laptop_config_field_options`
+--
+ALTER TABLE `laptop_config_field_options`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT voor een tabel `options`
 --
 ALTER TABLE `options`
@@ -478,6 +539,18 @@ ALTER TABLE `laptop_categories`
 --
 ALTER TABLE `laptop_specs`
   ADD CONSTRAINT `laptop_specs_ibfk_1` FOREIGN KEY (`laptop_id`) REFERENCES `laptops` (`id`) ON DELETE CASCADE;
+
+--
+-- Beperkingen voor tabel `laptop_config_fields`
+--
+ALTER TABLE `laptop_config_fields`
+  ADD CONSTRAINT `laptop_config_fields_ibfk_1` FOREIGN KEY (`laptop_id`) REFERENCES `laptops` (`id`) ON DELETE CASCADE;
+
+--
+-- Beperkingen voor tabel `laptop_config_field_options`
+--
+ALTER TABLE `laptop_config_field_options`
+  ADD CONSTRAINT `laptop_config_field_options_ibfk_1` FOREIGN KEY (`field_id`) REFERENCES `laptop_config_fields` (`id`) ON DELETE CASCADE;
 
 --
 -- Beperkingen voor tabel `options`

@@ -11,6 +11,132 @@ $error = '';
 $currentUser = Auth::getCurrentUser();
 
 // ============================================================================
+// LAPTOP CONFIGURATIE (per-laptop extra opties)
+// ============================================================================
+function ensureLaptopConfigSchema(PDO $pdo): void
+{
+    // Idempotent schema (MySQL/MariaDB)
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS laptop_config_fields (\n"
+        . "  id INT(11) NOT NULL AUTO_INCREMENT,\n"
+        . "  laptop_id INT(11) NOT NULL,\n"
+        . "  field_key VARCHAR(64) NOT NULL,\n"
+        . "  field_label VARCHAR(255) NOT NULL,\n"
+        . "  field_type VARCHAR(20) NOT NULL,\n"
+        . "  default_value VARCHAR(255) DEFAULT NULL,\n"
+        . "  is_active TINYINT(1) DEFAULT 1,\n"
+        . "  sort_order INT(11) DEFAULT 0,\n"
+        . "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+        . "  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+        . "  PRIMARY KEY (id),\n"
+        . "  UNIQUE KEY unique_laptop_field (laptop_id, field_key),\n"
+        . "  KEY idx_laptop (laptop_id),\n"
+        . "  CONSTRAINT fk_laptop_config_fields_laptop FOREIGN KEY (laptop_id) REFERENCES laptops(id) ON DELETE CASCADE\n"
+        . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS laptop_config_field_options (\n"
+        . "  id INT(11) NOT NULL AUTO_INCREMENT,\n"
+        . "  field_id INT(11) NOT NULL,\n"
+        . "  option_label VARCHAR(255) NOT NULL,\n"
+        . "  option_value VARCHAR(255) NOT NULL,\n"
+        . "  sort_order INT(11) DEFAULT 0,\n"
+        . "  is_default TINYINT(1) DEFAULT 0,\n"
+        . "  PRIMARY KEY (id),\n"
+        . "  KEY idx_field (field_id),\n"
+        . "  CONSTRAINT fk_laptop_config_options_field FOREIGN KEY (field_id) REFERENCES laptop_config_fields(id) ON DELETE CASCADE\n"
+        . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+}
+
+function getDefaultLaptopConfigFieldDefinitions(): array
+{
+    return [
+        'model_variant' => ['label' => 'Model variant', 'type' => 'select', 'default_options' => ['Tablet', 'Detachable']],
+        'processor' => ['label' => 'Processor', 'type' => 'select', 'default_options' => ['Intel Core i5', 'Intel Core i7']],
+        'storage' => ['label' => 'Opslag', 'type' => 'select', 'default_options' => ['256GB', '512GB']],
+        'ram' => ['label' => 'RAM', 'type' => 'select', 'default_options' => ['8GB', '16GB']],
+        'lte' => ['label' => '4G LTE (optioneel)', 'type' => 'boolean', 'default_value' => '0'],
+        'gps' => ['label' => 'GPS (optioneel)', 'type' => 'boolean', 'default_value' => '0'],
+        'battery' => ['label' => 'Batterij', 'type' => 'select', 'default_options' => ['Standaard', 'High Capacity']],
+        'config_area_1' => [
+            'label' => 'Configuration area 1',
+            'type' => 'select',
+            'default_options' => [
+                'Empty (default)',
+                'Serial interface',
+                '2nd USB 2.0 connection',
+                '2D barcode reader',
+            ],
+        ],
+        'config_area_2' => [
+            'label' => 'Configuration area 2',
+            'type' => 'select',
+            'default_options' => [
+                'Empty (default)',
+                'SmartCard reader',
+                'Contactless SmartCard reader / NFC',
+                'Fingerprint reader',
+            ],
+        ],
+    ];
+}
+
+function seedLaptopConfigIfMissing(PDO $pdo, int $laptopId): void
+{
+    $check = $pdo->prepare('SELECT COUNT(*) FROM laptop_config_fields WHERE laptop_id = ?');
+    $check->execute([$laptopId]);
+    $count = (int)$check->fetchColumn();
+    if ($count > 0) {
+        return;
+    }
+
+    $defs = getDefaultLaptopConfigFieldDefinitions();
+    $pdo->beginTransaction();
+    try {
+        $insertField = $pdo->prepare(
+            'INSERT INTO laptop_config_fields (laptop_id, field_key, field_label, field_type, default_value, is_active, sort_order) '
+            . 'VALUES (?, ?, ?, ?, ?, 1, ?)'
+        );
+        $insertOpt = $pdo->prepare(
+            'INSERT INTO laptop_config_field_options (field_id, option_label, option_value, sort_order, is_default) '
+            . 'VALUES (?, ?, ?, ?, ?)'
+        );
+
+        $sort = 1;
+        foreach ($defs as $key => $def) {
+            $defaultValue = $def['default_value'] ?? null;
+            if (($def['type'] ?? '') === 'select') {
+                $opts = $def['default_options'] ?? [];
+                $defaultValue = !empty($opts) ? (string)$opts[0] : null;
+            }
+            $insertField->execute([$laptopId, $key, $def['label'], $def['type'], $defaultValue, $sort]);
+            $fieldId = (int)$pdo->lastInsertId();
+
+            if (($def['type'] ?? '') === 'select') {
+                $opts = $def['default_options'] ?? [];
+                $o = 1;
+                foreach ($opts as $opt) {
+                    $isDefault = ($o === 1) ? 1 : 0;
+                    $insertOpt->execute([$fieldId, $opt, $opt, $o, $isDefault]);
+                    $o++;
+                }
+            }
+
+            $sort++;
+        }
+
+        $pdo->commit();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+// ============================================================================
 // ADMIN GEBRUIKER TOEVOEGEN
 // ============================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_admin'])) {
@@ -386,6 +512,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_laptop'])) {
     }
 }
 
+// ============================================================================
+// LAPTOP CONFIGURATIE OPSLAAN
+// ============================================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_laptop_config'])) {
+    $laptopId = (int)($_POST['laptop_id'] ?? 0);
+
+    if ($laptopId <= 0) {
+        $error = 'Ongeldige laptop.';
+    } else {
+        try {
+            ensureLaptopConfigSchema($pdo);
+
+            $defs = getDefaultLaptopConfigFieldDefinitions();
+
+            $pdo->beginTransaction();
+
+            $upsertField = $pdo->prepare(
+                'INSERT INTO laptop_config_fields (laptop_id, field_key, field_label, field_type, default_value, is_active, sort_order) '
+                . 'VALUES (?, ?, ?, ?, ?, ?, ?) '
+                . 'ON DUPLICATE KEY UPDATE '
+                . 'field_label = VALUES(field_label), '
+                . 'field_type = VALUES(field_type), '
+                . 'default_value = VALUES(default_value), '
+                . 'is_active = VALUES(is_active), '
+                . 'sort_order = VALUES(sort_order)'
+            );
+            $getFieldId = $pdo->prepare('SELECT id FROM laptop_config_fields WHERE laptop_id = ? AND field_key = ?');
+            $deleteOptions = $pdo->prepare('DELETE FROM laptop_config_field_options WHERE field_id = ?');
+            $insertOption = $pdo->prepare(
+                'INSERT INTO laptop_config_field_options (field_id, option_label, option_value, sort_order, is_default) '
+                . 'VALUES (?, ?, ?, ?, ?)'
+            );
+
+            $fieldLabels = $_POST['field_label'] ?? [];
+            $fieldActive = $_POST['field_active'] ?? [];
+            $fieldDefaults = $_POST['field_default'] ?? [];
+            $fieldOptionsRaw = $_POST['field_options'] ?? [];
+
+            $sort = 1;
+            foreach ($defs as $key => $def) {
+                $label = trim((string)($fieldLabels[$key] ?? $def['label']));
+                if ($label === '') {
+                    $label = $def['label'];
+                }
+                $active = !empty($fieldActive[$key]) ? 1 : 0;
+                $type = $def['type'];
+
+                $defaultValue = null;
+
+                if ($type === 'boolean') {
+                    $defaultValue = !empty($fieldDefaults[$key]) ? '1' : '0';
+                } elseif ($type === 'select') {
+                    $raw = (string)($fieldOptionsRaw[$key] ?? '');
+                    $lines = preg_split('/\R/u', $raw);
+                    $opts = [];
+                    foreach ($lines as $line) {
+                        $v = trim((string)$line);
+                        if ($v === '') {
+                            continue;
+                        }
+                        $opts[] = $v;
+                    }
+                    if (empty($opts)) {
+                        $opts = $def['default_options'] ?? [];
+                    }
+                    $defaultValue = !empty($opts) ? (string)$opts[0] : null;
+                }
+
+                $upsertField->execute([$laptopId, $key, $label, $type, $defaultValue, $active, $sort]);
+                $getFieldId->execute([$laptopId, $key]);
+                $fieldId = (int)$getFieldId->fetchColumn();
+
+                if ($type === 'select') {
+                    $deleteOptions->execute([$fieldId]);
+
+                    $raw = (string)($fieldOptionsRaw[$key] ?? '');
+                    $lines = preg_split('/\R/u', $raw);
+                    $opts = [];
+                    foreach ($lines as $line) {
+                        $v = trim((string)$line);
+                        if ($v === '') {
+                            continue;
+                        }
+                        $opts[] = $v;
+                    }
+                    if (empty($opts)) {
+                        $opts = $def['default_options'] ?? [];
+                    }
+
+                    $o = 1;
+                    foreach ($opts as $opt) {
+                        $isDefault = ($o === 1) ? 1 : 0;
+                        $insertOption->execute([$fieldId, $opt, $opt, $o, $isDefault]);
+                        $o++;
+                    }
+                }
+
+                $sort++;
+            }
+
+            $pdo->commit();
+            $message = 'Laptop configuratie opgeslagen!';
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $error = 'Fout bij opslaan van laptop configuratie: ' . $e->getMessage();
+        }
+    }
+}
+
 // Laptop verwijderen
 if (isset($_GET['delete_laptop'])) {
     $lid = (int)$_GET['delete_laptop'];
@@ -508,6 +745,57 @@ SQL;
                 $laptopScoreQuestions[$qid]['no'] = $opt;
             }
         }
+    }
+}
+
+// Als specifieke laptop geselecteerd voor laptop-configuratie
+$editLaptopConfig = null;
+$editLaptopConfigFields = [];
+if (isset($_GET['edit_laptop_config'])) {
+    $editId = (int)$_GET['edit_laptop_config'];
+
+    try {
+        ensureLaptopConfigSchema($pdo);
+        $stmt = $pdo->prepare('SELECT id, name, model_code, price_eur, is_active FROM laptops WHERE id = ?');
+        $stmt->execute([$editId]);
+        $editLaptopConfig = $stmt->fetch();
+
+        if ($editLaptopConfig) {
+            seedLaptopConfigIfMissing($pdo, $editId);
+
+            $fields = $pdo->prepare('SELECT * FROM laptop_config_fields WHERE laptop_id = ? ORDER BY sort_order');
+            $fields->execute([$editId]);
+            $rows = $fields->fetchAll(PDO::FETCH_ASSOC);
+
+            $optStmt = $pdo->prepare(
+                'SELECT o.* FROM laptop_config_field_options o '
+                . 'JOIN laptop_config_fields f ON f.id = o.field_id '
+                . 'WHERE f.laptop_id = ? ORDER BY f.sort_order, o.sort_order'
+            );
+            $optStmt->execute([$editId]);
+            $opts = $optStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $optionsByFieldId = [];
+            foreach ($opts as $o) {
+                $fid = (int)$o['field_id'];
+                if (!isset($optionsByFieldId[$fid])) {
+                    $optionsByFieldId[$fid] = [];
+                }
+                $optionsByFieldId[$fid][] = (string)$o['option_label'];
+            }
+
+            foreach ($rows as $r) {
+                $fid = (int)$r['id'];
+                $r['options_text'] = '';
+                if (($r['field_type'] ?? '') === 'select') {
+                    $list = $optionsByFieldId[$fid] ?? [];
+                    $r['options_text'] = implode("\n", $list);
+                }
+                $editLaptopConfigFields[(string)$r['field_key']] = $r;
+            }
+        }
+    } catch (Exception $e) {
+        $error = 'Fout bij laden van laptop configuratie: ' . $e->getMessage();
     }
 }
 ?>
@@ -828,6 +1116,70 @@ SQL;
                 <?php endif; ?>
             </div>
         <?php endif; ?>
+
+        <?php if ($editLaptopConfig): ?>
+            <?php $defs = getDefaultLaptopConfigFieldDefinitions(); ?>
+            <div class="edit-section">
+                <h4>⚙️ Laptop instellen: <?php echo htmlspecialchars($editLaptopConfig['name']); ?></h4>
+                <p class="muted" style="margin-top:-6px;">
+                    👀 Preview: <a href="laptop_configure.php?id=<?php echo (int)$editLaptopConfig['id']; ?>" target="_blank">open gebruikerspagina</a>
+                </p>
+                <p class="muted mb-20">
+                    Vul per optie de mogelijke keuzes in. <strong>De eerste regel</strong> wordt als standaard gebruikt.
+                    Zet "Actief" uit als de optie niet geldt voor deze laptop.
+                </p>
+
+                <form method="post">
+                    <input type="hidden" name="laptop_id" value="<?php echo (int)$editLaptopConfig['id']; ?>">
+
+                    <?php foreach ($defs as $key => $def): ?>
+                        <?php
+                            $row = $editLaptopConfigFields[$key] ?? null;
+                            $labelVal = $row ? (string)$row['field_label'] : (string)$def['label'];
+                            $activeVal = $row ? (int)$row['is_active'] : 1;
+                            $type = (string)$def['type'];
+                            $defaultVal = $row ? (string)($row['default_value'] ?? '') : (string)($def['default_value'] ?? '');
+                            $optionsText = $row ? (string)($row['options_text'] ?? '') : implode("\n", (array)($def['default_options'] ?? []));
+                        ?>
+
+                        <div class="card" style="margin: 12px 0;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                                <div style="flex:1;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label>Label</label>
+                                        <input type="text" name="field_label[<?php echo htmlspecialchars($key); ?>]" value="<?php echo htmlspecialchars($labelVal); ?>">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="display:flex;gap:8px;align-items:center;margin-top:18px;">
+                                        <input type="checkbox" name="field_active[<?php echo htmlspecialchars($key); ?>]" value="1" <?php echo ($activeVal ? 'checked' : ''); ?>>
+                                        <span>Actief</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <?php if ($type === 'select'): ?>
+                                <div class="form-group" style="margin-top:10px;">
+                                    <label>Keuzes (1 per regel)</label>
+                                    <textarea name="field_options[<?php echo htmlspecialchars($key); ?>]" rows="4" placeholder="Bijv. 256GB\n512GB\n1TB"><?php echo htmlspecialchars($optionsText); ?></textarea>
+                                </div>
+                            <?php else: ?>
+                                <div class="form-group" style="margin-top:10px;">
+                                    <label style="display:flex;gap:8px;align-items:center;">
+                                        <input type="checkbox" name="field_default[<?php echo htmlspecialchars($key); ?>]" value="1" <?php echo ($defaultVal === '1' ? 'checked' : ''); ?>>
+                                        <span>Standaard aan</span>
+                                    </label>
+                                    <div class="helper-text">Op de gebruikerspagina wordt dit een aan/uit optie.</div>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+
+                    <button type="submit" name="update_laptop_config" class="btn btn-primary mt-20">💾 Configuratie Opslaan</button>
+                    <a href="admin.php" class="btn btn-secondary mt-20">❌ Sluiten</a>
+                </form>
+            </div>
+        <?php endif; ?>
         
         <table>
             <thead>
@@ -845,6 +1197,7 @@ SQL;
                     <td>
                         <a href="?edit_laptop=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
                         <a href="?edit_laptop_scores=<?php echo $l['id']; ?>" class="btn btn-primary btn-small">🎯 Scores</a>
+                        <a href="?edit_laptop_config=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">⚙️ Instellen</a>
                         <a href="?delete_laptop=<?php echo $l['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze laptop wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
                     </td>
                 </tr>
@@ -1042,7 +1395,7 @@ window.onclick = function(event) {
 }
 
 // Activeer automatisch de Laptops-tab bij relevante acties
-<?php if (isset($_GET['edit_laptop']) || isset($_GET['edit_laptop_scores']) || (isset($_POST['add_laptop']) || isset($_POST['update_laptop']) || isset($_POST['update_laptop_scores']) || isset($_POST['repair_mappings']))): ?>
+<?php if (isset($_GET['edit_laptop']) || isset($_GET['edit_laptop_scores']) || isset($_GET['edit_laptop_config']) || (isset($_POST['add_laptop']) || isset($_POST['update_laptop']) || isset($_POST['update_laptop_scores']) || isset($_POST['update_laptop_config']) || isset($_POST['repair_mappings']))): ?>
 document.addEventListener('DOMContentLoaded', function(){ switchTab('laptops'); });
 <?php endif; ?>
 </script>

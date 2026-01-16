@@ -105,7 +105,7 @@ function allScoresZero(?array $results): bool {
         <?php $best = $results[0] ?? null; ?>
         <?php if ($best): ?>
             <h3>Aanbevolen laptop</h3>
-            <article class="card" style="border:2px solid rgba(0,0,0,0.08);">
+            <article class="card card--clickable" data-href="laptop_configure.php?id=<?php echo (int)$best['id']; ?>" style="border:2px solid rgba(0,0,0,0.08); cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px;">
                     <h3 style="margin:0;"><?php echo htmlspecialchars($best['name']); ?></h3>
                     <span class="muted"><?php echo round($best['points']); ?> score</span>
@@ -142,7 +142,7 @@ function allScoresZero(?array $results): bool {
             <h3 style="margin-top:20px;">Andere matches</h3>
             <div class="laptop-list">
                 <?php foreach (array_slice($results, 1, 3) as $r): ?>
-                    <article class="card">
+                    <article class="card card--clickable" data-href="laptop_configure.php?id=<?php echo (int)$r['id']; ?>" style="cursor:pointer;">
                         <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
                             <h3><?php echo htmlspecialchars($r['name']); ?></h3>
                             <span class="muted"><?php echo round($r['points']); ?> score</span>
@@ -209,6 +209,24 @@ function allScoresZero(?array $results): bool {
     });
 
     update();
+})();
+
+(function(){
+    document.querySelectorAll('.card--clickable[data-href]').forEach(card => {
+        card.addEventListener('click', () => {
+            const href = card.getAttribute('data-href');
+            if (href) window.location.href = href;
+        });
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                const href = card.getAttribute('data-href');
+                if (href) window.location.href = href;
+            }
+        });
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('role', 'link');
+    });
 })();
 </script>
 </body>

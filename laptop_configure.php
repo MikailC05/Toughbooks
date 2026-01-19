@@ -318,8 +318,27 @@ function normalizeKeyLabel(string $key, string $fallback): string
         if(current < total) {
             showStep(current + 1);
         } else {
-            // Final step: nothing to submit yet, keep summary visible.
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Final step: POST selected configuration to the overview page.
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'offer.php';
+
+            const laptopId = document.createElement('input');
+            laptopId.type = 'hidden';
+            laptopId.name = 'laptop_id';
+            laptopId.value = <?php echo (int)$laptopId; ?>;
+            form.appendChild(laptopId);
+
+            document.querySelectorAll('.wizard-section[data-field] input[data-field-input]').forEach(inp => {
+                const h = document.createElement('input');
+                h.type = 'hidden';
+                h.name = inp.getAttribute('name') || '';
+                h.value = inp.value || '';
+                if (h.name) form.appendChild(h);
+            });
+
+            document.body.appendChild(form);
+            form.submit();
         }
     });
 

@@ -3,6 +3,14 @@ session_start();
 require_once __DIR__ . '/src/Database.php';
 require_once __DIR__ . '/src/Auth.php';
 
+// Forceer altijd eerst de login-pagina als iemand admin.php opent.
+// Het admin panel zelf wordt benaderd via admin.php?panel=1.
+if (!isset($_GET['panel']) || (string)$_GET['panel'] !== '1') {
+    $redirect = urlencode('admin.php?panel=1');
+    header('Location: admin_login.php?redirect=' . $redirect);
+    exit;
+}
+
 Auth::requireLogin();
 
 $pdo = Database::getInstance()->getPdo();
@@ -904,7 +912,7 @@ if (isset($_GET['edit_laptop_config'])) {
                     </div>
                     
                     <button type="submit" name="edit_question" class="btn btn-primary">💾 Vraag Opslaan</button>
-                    <a href="admin.php" class="btn btn-secondary">❌ Annuleren</a>
+                    <a href="admin.php?panel=1" class="btn btn-secondary">❌ Annuleren</a>
                 </form>
                 
                 <hr class="hr-custom">
@@ -986,8 +994,8 @@ if (isset($_GET['edit_laptop_config'])) {
                         </td>
                         <td><span class="weight-badge"><?php echo $q['weight']; ?>x</span></td>
                         <td>
-                            <a href="?edit=<?php echo $q['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
-                            <a href="?delete_question=<?php echo $q['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze vraag wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
+                            <a href="?panel=1&edit=<?php echo $q['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
+                            <a href="?panel=1&delete_question=<?php echo $q['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze vraag wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -1035,7 +1043,7 @@ if (isset($_GET['edit_laptop_config'])) {
                     </div>
 
                     <button type="submit" name="update_laptop" class="btn btn-primary">💾 Laptop Opslaan</button>
-                    <a href="admin.php" class="btn btn-secondary">❌ Annuleren</a>
+                    <a href="admin.php?panel=1" class="btn btn-secondary">❌ Annuleren</a>
                 </form>
             </div>
         <?php endif; ?>
@@ -1111,7 +1119,7 @@ if (isset($_GET['edit_laptop_config'])) {
                         </table>
 
                         <button type="submit" name="update_laptop_scores" class="btn btn-primary mt-20">💾 Scores Opslaan</button>
-                        <a href="admin.php" class="btn btn-secondary mt-20">❌ Sluiten</a>
+                        <a href="admin.php?panel=1" class="btn btn-secondary mt-20">❌ Sluiten</a>
                     </form>
                 <?php endif; ?>
             </div>
@@ -1176,7 +1184,7 @@ if (isset($_GET['edit_laptop_config'])) {
                     <?php endforeach; ?>
 
                     <button type="submit" name="update_laptop_config" class="btn btn-primary mt-20">💾 Configuratie Opslaan</button>
-                    <a href="admin.php" class="btn btn-secondary mt-20">❌ Sluiten</a>
+                    <a href="admin.php?panel=1" class="btn btn-secondary mt-20">❌ Sluiten</a>
                 </form>
             </div>
         <?php endif; ?>
@@ -1195,10 +1203,10 @@ if (isset($_GET['edit_laptop_config'])) {
                     <td><strong><?php echo htmlspecialchars($l['name']); ?></strong></td>
                     <td><strong>€<?php echo number_format($l['price_eur'], 2, ',', '.'); ?></strong></td>
                     <td>
-                        <a href="?edit_laptop=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
-                        <a href="?edit_laptop_scores=<?php echo $l['id']; ?>" class="btn btn-primary btn-small">🎯 Scores</a>
-                        <a href="?edit_laptop_config=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">⚙️ Instellen</a>
-                        <a href="?delete_laptop=<?php echo $l['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze laptop wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
+                        <a href="?panel=1&edit_laptop=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
+                        <a href="?panel=1&edit_laptop_scores=<?php echo $l['id']; ?>" class="btn btn-primary btn-small">🎯 Scores</a>
+                        <a href="?panel=1&edit_laptop_config=<?php echo $l['id']; ?>" class="btn btn-secondary btn-small">⚙️ Instellen</a>
+                        <a href="?panel=1&delete_laptop=<?php echo $l['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze laptop wilt verwijderen?\n\nAlle gekoppelde scores worden ook verwijderd.');">🗑️ Verwijderen</a>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -1240,7 +1248,7 @@ if (isset($_GET['edit_laptop_config'])) {
                             🔑 Wachtwoord Wijzigen
                         </button>
                         <?php if ($admin['id'] !== $currentUser['id']): ?>
-                            <a href="?delete_admin=<?php echo $admin['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je <?php echo htmlspecialchars($admin['username']); ?> wilt verwijderen?');">
+                            <a href="?panel=1&delete_admin=<?php echo $admin['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je <?php echo htmlspecialchars($admin['username']); ?> wilt verwijderen?');">
                                 🗑️ Verwijderen
                             </a>
                         <?php endif; ?>

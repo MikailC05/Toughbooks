@@ -9,4 +9,4 @@ if (file_exists($dbFile)) {
 // Recreate by instantiating Database
 Database::getInstance();
 
-echo "Database reset and initialized. <a href=\"admin.php\">Back to admin</a>";
+echo "Database reset and initialized. <a href=\"admin_login.php\">Back to admin</a>";

@@ -2,71 +2,87 @@
 session_start();
 require_once __DIR__ . '/src/Database.php';
 
-$pdo = Database::getInstance()->getPdo();
-
-$laptopId = 0;
-if (isset($_POST['laptop_id']) && ctype_digit((string)$_POST['laptop_id'])) {
-    $laptopId = (int)$_POST['laptop_id'];
-}
-if ($laptopId <= 0) {
-    http_response_code(400);
-    echo 'Ongeldige aanvraag.';
-    exit;
-}
-
-$stmt = $pdo->prepare('SELECT id, name, description, model_code, price_eur FROM laptops WHERE id = ? AND is_active = 1');
-$stmt->execute([$laptopId]);
-$laptop = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$laptop) {
-    http_response_code(404);
-    echo 'Laptop niet gevonden.';
-    exit;
-}
-
-$fieldsStmt = $pdo->prepare('SELECT field_key, field_label, field_type FROM laptop_config_fields WHERE laptop_id = ? AND is_active = 1 ORDER BY sort_order');
-$fieldsStmt->execute([$laptopId]);
-$fieldRows = $fieldsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-$labelByKey = [];
-$typeByKey = [];
-foreach ($fieldRows as $r) {
-    $k = (string)$r['field_key'];
-    $labelByKey[$k] = (string)$r['field_label'];
-    $typeByKey[$k] = (string)$r['field_type'];
-}
-
-$specs = [];
-foreach ($_POST as $key => $value) {
-    if ($key === 'laptop_id') {
-        continue;
-    }
-    if (!isset($labelByKey[$key])) {
-        continue;
-    }
-
-    $type = $typeByKey[$key] ?? 'select';
-    $display = (string)$value;
-    if ($type === 'boolean') {
-        $display = ((string)$value === '1') ? 'Ja' : 'Nee';
-    }
-
-    $specs[] = [
-        'key' => $key,
-        'label' => $labelByKey[$key],
-        'value' => $display,
-    ];
-}
-
-// Bewaar in session voor de download
-$_SESSION['offer'] = [
-    'laptop_id' => $laptopId,
-    'laptop' => $laptop,
-    'specs' => $specs,
-    'created_at' => date('c'),
-];
-
 function h(string $s): string {
-    return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+        return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+}
+$offer = $_SESSION['offer'] ?? null;
+$laptopId = 0;
+$laptop = null;
+$specs = [];
+
+// Handle: normal entry to offer page (POST from configurator)
+if (!$laptop) {
+    if (isset($_POST['laptop_id']) && ctype_digit((string)$_POST['laptop_id'])) {
+        $pdo = Database::getInstance()->getPdo();
+
+        $laptopId = (int)$_POST['laptop_id'];
+        if ($laptopId <= 0) {
+            http_response_code(400);
+            echo 'Ongeldige aanvraag.';
+            exit;
+        }
+
+        $stmt = $pdo->prepare('SELECT id, name, description, model_code, price_eur FROM laptops WHERE id = ? AND is_active = 1');
+        $stmt->execute([$laptopId]);
+        $laptop = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$laptop) {
+            http_response_code(404);
+            echo 'Laptop niet gevonden.';
+            exit;
+        }
+
+        $fieldsStmt = $pdo->prepare('SELECT field_key, field_label, field_type FROM laptop_config_fields WHERE laptop_id = ? AND is_active = 1 ORDER BY sort_order');
+        $fieldsStmt->execute([$laptopId]);
+        $fieldRows = $fieldsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $labelByKey = [];
+        $typeByKey = [];
+        foreach ($fieldRows as $r) {
+            $k = (string)$r['field_key'];
+            $labelByKey[$k] = (string)$r['field_label'];
+            $typeByKey[$k] = (string)$r['field_type'];
+        }
+
+        $specs = [];
+        foreach ($_POST as $key => $value) {
+            if ($key === 'laptop_id') {
+                continue;
+            }
+            if (!isset($labelByKey[$key])) {
+                continue;
+            }
+
+            $type = $typeByKey[$key] ?? 'select';
+            $display = (string)$value;
+            if ($type === 'boolean') {
+                $display = ((string)$value === '1') ? 'Ja' : 'Nee';
+            }
+
+            $specs[] = [
+                'key' => $key,
+                'label' => $labelByKey[$key],
+                'value' => $display,
+            ];
+        }
+
+        // Bewaar in session voor de download en e-mail
+        $_SESSION['offer'] = [
+            'laptop_id' => $laptopId,
+            'laptop' => $laptop,
+            'specs' => $specs,
+            'created_at' => date('c'),
+        ];
+        $offer = $_SESSION['offer'];
+    } elseif ($offer && !empty($offer['laptop'])) {
+        // Allow refresh/back to this page (use the session)
+        $laptop = (array)$offer['laptop'];
+        $specs = (array)($offer['specs'] ?? []);
+        $laptopId = (int)($offer['laptop_id'] ?? 0);
+    } else {
+        http_response_code(400);
+        echo 'Geen offerte gevonden. Ga terug en configureer opnieuw.';
+        exit;
+    }
 }
 ?>
 <!doctype html>

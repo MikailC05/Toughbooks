@@ -143,7 +143,7 @@ function normalizeKeyLabel(string $key, string $fallback): string
     </div>
     <div class="top-links">
         <a href="index.php">Terug</a>
-        <a href="admin.php" class="muted">Admin</a>
+        <a href="admin_login.php" class="muted">Admin</a>
     </div>
 </header>
 

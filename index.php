@@ -57,9 +57,7 @@ function allScoresZero(?array $results): bool {
             <div class="muted">Vind de beste Toughbook voor jouw werk</div>
         </div>
     </div>
-    <div class="top-links">
-        <a href="admin.php">Admin</a>
-    </div>
+   
 </header>
 
 <main class="container">
@@ -98,7 +96,7 @@ function allScoresZero(?array $results): bool {
         <?php $zero = allScoresZero($results); ?>
         <?php if ($zero): ?>
             <div class="info" style="margin-bottom:16px;">
-                ℹ️ Er zijn nog geen matches ingesteld. Ga naar <a href="admin.php">Admin</a> en vink per laptop per vraag aan wat past.
+                ℹ️ Er zijn nog geen matches ingesteld. Ga naar <a href="admin_login.php">Admin</a> en vink per laptop per vraag aan wat past.
             </div>
         <?php endif; ?>
 

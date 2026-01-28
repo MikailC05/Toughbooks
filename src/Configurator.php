@@ -24,7 +24,8 @@ class Configurator
                 'model_code' => $l['model_code'],
                 'description' => $l['description'],
                 'price_eur' => $l['price_eur'],
-                'points' => 0,
+                'points' => 0.0,
+                'matches' => 0,
                 'reasons' => []
             ];
         }
@@ -54,6 +55,10 @@ class Configurator
                 // Pas weging toe op de punten
                 $weightedPoints = $pts * $weight;
                 $scores[$lid]['points'] += $weightedPoints;
+
+                if ($pts > 0) {
+                    $scores[$lid]['matches'] += 1;
+                }
                 
                 // Voeg reden toe als er punten zijn gescoord
                 if ($pts > 0 && !empty($r['reason'])) {
@@ -65,7 +70,28 @@ class Configurator
         // Converteer naar array en sorteer op punten (hoogste eerst)
         $result = array_values($scores);
         usort($result, function ($a, $b) {
-            return $b['points'] <=> $a['points'];
+            // 1) Meeste punten wint
+            $cmp = $b['points'] <=> $a['points'];
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            // 2) Bij gelijke punten: meeste positieve matches wint
+            $cmp = ($b['matches'] ?? 0) <=> ($a['matches'] ?? 0);
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            // 3) Bij gelijke match: goedkoopste eerst (null prijs -> achteraan)
+            $aPrice = ($a['price_eur'] === null) ? PHP_FLOAT_MAX : (float)$a['price_eur'];
+            $bPrice = ($b['price_eur'] === null) ? PHP_FLOAT_MAX : (float)$b['price_eur'];
+            $cmp = $aPrice <=> $bPrice;
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            // 4) Als laatste: alfabetisch
+            return strcmp((string)$a['name'], (string)$b['name']);
         });
 
         return $result;

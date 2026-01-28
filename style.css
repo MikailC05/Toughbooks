@@ -560,6 +560,11 @@
             padding-bottom: 10px;
             border-bottom: 3px solid #e9ecef;
         }
+
+        .login-container .form-group input {
+    border-color: var(--accent);
+    color: #111827;
+}
         
         .summary-item {
             padding: 8px 0;

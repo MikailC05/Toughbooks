@@ -2,14 +2,34 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/src/Auth.php';
 
-// Als al ingelogd, redirect naar admin
-if (Auth::isLoggedIn()) {
-    header('Location: admin.php');
-    exit;
+$error = '';
+
+function normalizeRedirect(string $redirect): string
+{
+    $redirect = trim($redirect);
+    if ($redirect === '') {
+        return 'admin.php?panel=1';
+    }
+
+    $decoded = urldecode($redirect);
+
+    // Block absolute URLs / protocol-relative URLs (open redirect)
+    if (preg_match('~^(?:https?:)?//~i', $decoded)) {
+        return 'admin.php?panel=1';
+    }
+
+    // Keep it relative
+    $decoded = ltrim($decoded, '/');
+    return $decoded === '' ? 'admin.php?panel=1' : $decoded;
 }
 
-$error = '';
-$redirect = $_GET['redirect'] ?? 'admin.php';
+$redirect = normalizeRedirect((string)($_GET['redirect'] ?? 'admin.php?panel=1'));
+
+// Als al ingelogd, redirect naar de gewenste pagina
+if (Auth::isLoggedIn()) {
+    header('Location: ' . $redirect);
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -17,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($username && $password) {
         if (Auth::login($username, $password)) {
-            header('Location: ' . urldecode($redirect));
+            header('Location: ' . $redirect);
             exit;
         } else {
             $error = 'Ongeldige gebruikersnaam of wachtwoord.';
@@ -34,7 +54,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Admin Login - Toughbooks</title>
     <link rel="stylesheet" href="assets/css/style.css">
-    
+
+    <style>
+        .login-container .form-group label {
+            color: black;
+        }
+
+        .login-container .form-group input {
+            border: 1px solid black;
+            color: black;
+        }
+
+        .login-container .form-group input:focus {
+            outline: none;
+            border-color: black;
+          
+        }
+    </style>
 </head>
 <body>
     <div class="login-container">

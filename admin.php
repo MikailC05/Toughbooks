@@ -49,6 +49,7 @@ function ensureLaptopConfigSchema(PDO $pdo): void
         . "  field_id INT(11) NOT NULL,\n"
         . "  option_label VARCHAR(255) NOT NULL,\n"
         . "  option_value VARCHAR(255) NOT NULL,\n"
+        . "  image_path VARCHAR(500) DEFAULT NULL,\n"
         . "  sort_order INT(11) DEFAULT 0,\n"
         . "  is_default TINYINT(1) DEFAULT 0,\n"
         . "  PRIMARY KEY (id),\n"
@@ -56,6 +57,13 @@ function ensureLaptopConfigSchema(PDO $pdo): void
         . "  CONSTRAINT fk_laptop_config_options_field FOREIGN KEY (field_id) REFERENCES laptop_config_fields(id) ON DELETE CASCADE\n"
         . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+
+    // Add image_path column if it doesn't exist (for existing installations)
+    try {
+        $pdo->exec("ALTER TABLE laptop_config_field_options ADD COLUMN image_path VARCHAR(500) DEFAULT NULL AFTER option_value");
+    } catch (PDOException $e) {
+        // Column already exists, ignore
+    }
 }
 
 function getDefaultLaptopConfigFieldDefinitions(): array
@@ -521,6 +529,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_laptop'])) {
 }
 
 // ============================================================================
+// OPTIE AFBEELDING UPLOADEN
+// ============================================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_option_image'])) {
+    $optionId = (int)($_POST['option_id'] ?? 0);
+    $laptopId = (int)($_POST['laptop_id'] ?? 0);
+
+    if ($optionId <= 0) {
+        $error = 'Ongeldige optie.';
+    } elseif (!isset($_FILES['option_image']) || $_FILES['option_image']['error'] !== UPLOAD_ERR_OK) {
+        $error = 'Geen afbeelding geüpload of upload fout.';
+    } else {
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $fileType = $_FILES['option_image']['type'];
+
+        if (!in_array($fileType, $allowedTypes)) {
+            $error = 'Alleen JPG, PNG, GIF en WEBP afbeeldingen zijn toegestaan.';
+        } else {
+            $uploadDir = __DIR__ . '/uploads/options/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            $ext = pathinfo($_FILES['option_image']['name'], PATHINFO_EXTENSION);
+            $filename = 'option_' . $optionId . '_' . time() . '.' . $ext;
+            $targetPath = $uploadDir . $filename;
+
+            if (move_uploaded_file($_FILES['option_image']['tmp_name'], $targetPath)) {
+                try {
+                    // Delete old image if exists
+                    $oldImg = $pdo->prepare('SELECT image_path FROM laptop_config_field_options WHERE id = ?');
+                    $oldImg->execute([$optionId]);
+                    $oldPath = $oldImg->fetchColumn();
+                    if ($oldPath && file_exists(__DIR__ . '/' . $oldPath)) {
+                        unlink(__DIR__ . '/' . $oldPath);
+                    }
+
+                    $stmt = $pdo->prepare('UPDATE laptop_config_field_options SET image_path = ? WHERE id = ?');
+                    $stmt->execute(['uploads/options/' . $filename, $optionId]);
+                    $message = 'Afbeelding succesvol geüpload!';
+                } catch (Exception $e) {
+                    $error = 'Database fout: ' . $e->getMessage();
+                }
+            } else {
+                $error = 'Fout bij uploaden van afbeelding.';
+            }
+        }
+    }
+
+    // Redirect back to edit page
+    if ($laptopId > 0) {
+        header('Location: admin.php?panel=1&edit_laptop_config=' . $laptopId . ($message ? '&msg=uploaded' : ''));
+        exit;
+    }
+}
+
+// ============================================================================
+// OPTIE AFBEELDING VERWIJDEREN
+// ============================================================================
+if (isset($_GET['delete_option_image'])) {
+    $optionId = (int)$_GET['delete_option_image'];
+    $laptopId = (int)($_GET['laptop_id'] ?? 0);
+
+    try {
+        $oldImg = $pdo->prepare('SELECT image_path FROM laptop_config_field_options WHERE id = ?');
+        $oldImg->execute([$optionId]);
+        $oldPath = $oldImg->fetchColumn();
+
+        if ($oldPath && file_exists(__DIR__ . '/' . $oldPath)) {
+            unlink(__DIR__ . '/' . $oldPath);
+        }
+
+        $stmt = $pdo->prepare('UPDATE laptop_config_field_options SET image_path = NULL WHERE id = ?');
+        $stmt->execute([$optionId]);
+        $message = 'Afbeelding verwijderd!';
+    } catch (Exception $e) {
+        $error = 'Fout: ' . $e->getMessage();
+    }
+
+    if ($laptopId > 0) {
+        header('Location: admin.php?panel=1&edit_laptop_config=' . $laptopId);
+        exit;
+    }
+}
+
+// ============================================================================
 // LAPTOP CONFIGURATIE OPSLAAN
 // ============================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_laptop_config'])) {
@@ -648,17 +741,128 @@ if (isset($_GET['delete_laptop'])) {
 }
 
 // ============================================================================
+// MODELNUMMER REGELS BEHEREN
+// ============================================================================
+// Modelnummer regel toevoegen
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_model_rule'])) {
+    $keyboard = trim($_POST['keyboard_type'] ?? '');
+    $wireless = trim($_POST['wireless_type'] ?? '');
+    $screen = trim($_POST['screen_type'] ?? '');
+    $modelNumber = trim($_POST['model_number'] ?? '');
+    $price = isset($_POST['price_eur']) ? floatval($_POST['price_eur']) : 0.0;
+    $description = trim($_POST['description'] ?? '');
+
+    if ($keyboard === '' || $wireless === '' || $screen === '' || $modelNumber === '') {
+        $error = 'Alle velden behalve beschrijving zijn verplicht!';
+    } else {
+        try {
+            $stmt = $pdo->prepare('INSERT INTO model_number_rules (keyboard_type, wireless_type, screen_type, model_number, price_eur, description) VALUES (?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$keyboard, $wireless, $screen, $modelNumber, $price, $description]);
+            $message = 'Modelnummer regel succesvol toegevoegd!';
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') {
+                $error = 'Deze combinatie bestaat al!';
+            } else {
+                $error = 'Fout bij toevoegen: ' . $e->getMessage();
+            }
+        }
+    }
+}
+
+// Modelnummer regel bijwerken
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_model_rule'])) {
+    $ruleId = (int)($_POST['rule_id'] ?? 0);
+    $keyboard = trim($_POST['keyboard_type'] ?? '');
+    $wireless = trim($_POST['wireless_type'] ?? '');
+    $screen = trim($_POST['screen_type'] ?? '');
+    $modelNumber = trim($_POST['model_number'] ?? '');
+    $price = isset($_POST['price_eur']) ? floatval($_POST['price_eur']) : 0.0;
+    $description = trim($_POST['description'] ?? '');
+    $isActive = isset($_POST['is_active']) ? 1 : 0;
+
+    if ($keyboard === '' || $wireless === '' || $screen === '' || $modelNumber === '') {
+        $error = 'Alle velden behalve beschrijving zijn verplicht!';
+    } else {
+        try {
+            $stmt = $pdo->prepare('UPDATE model_number_rules SET keyboard_type = ?, wireless_type = ?, screen_type = ?, model_number = ?, price_eur = ?, description = ?, is_active = ? WHERE id = ?');
+            $stmt->execute([$keyboard, $wireless, $screen, $modelNumber, $price, $description, $isActive, $ruleId]);
+            $message = 'Modelnummer regel succesvol bijgewerkt!';
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') {
+                $error = 'Deze combinatie bestaat al!';
+            } else {
+                $error = 'Fout bij bijwerken: ' . $e->getMessage();
+            }
+        }
+    }
+}
+
+// Modelnummer regel verwijderen
+if (isset($_GET['delete_model_rule'])) {
+    $ruleId = (int)$_GET['delete_model_rule'];
+    try {
+        $stmt = $pdo->prepare('DELETE FROM model_number_rules WHERE id = ?');
+        $stmt->execute([$ruleId]);
+        $message = 'Modelnummer regel succesvol verwijderd!';
+    } catch (Exception $e) {
+        $error = 'Fout bij verwijderen: ' . $e->getMessage();
+    }
+}
+
+// Configuratie optie toevoegen
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_config_option'])) {
+    $optionType = $_POST['option_type'] ?? '';
+    $optionValue = trim($_POST['option_value'] ?? '');
+
+    if ($optionType === '' || $optionValue === '') {
+        $error = 'Type en waarde zijn verplicht!';
+    } else {
+        try {
+            $stmt = $pdo->prepare('INSERT INTO configuration_options (option_type, option_value, display_order) VALUES (?, ?, 999)');
+            $stmt->execute([$optionType, $optionValue]);
+            $message = 'Optie succesvol toegevoegd!';
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') {
+                $error = 'Deze optie bestaat al!';
+            } else {
+                $error = 'Fout bij toevoegen: ' . $e->getMessage();
+            }
+        }
+    }
+}
+
+// Configuratie optie verwijderen
+if (isset($_GET['delete_config_option'])) {
+    $optionId = (int)$_GET['delete_config_option'];
+    try {
+        $stmt = $pdo->prepare('DELETE FROM configuration_options WHERE id = ?');
+        $stmt->execute([$optionId]);
+        $message = 'Optie succesvol verwijderd!';
+    } catch (Exception $e) {
+        $error = 'Fout bij verwijderen: ' . $e->getMessage();
+    }
+}
+
+// ============================================================================
 // DATA OPHALEN
 // ============================================================================
 $laptops = $pdo->query('SELECT id, name, model_code, price_eur FROM laptops WHERE is_active = 1 ORDER BY name')->fetchAll();
 $questions = $pdo->query('SELECT id, text, description, weight, display_order FROM questions ORDER BY display_order')->fetchAll();
 $adminUsers = $pdo->query('SELECT id, username, created_at FROM admin_users ORDER BY id')->fetchAll();
 
+// Modelnummer data ophalen
+$modelRules = $pdo->query('SELECT * FROM model_number_rules ORDER BY keyboard_type, wireless_type, screen_type')->fetchAll();
+$configOptions = $pdo->query('SELECT * FROM configuration_options ORDER BY option_type, display_order')->fetchAll();
+$keyboardOptions = array_filter($configOptions, fn($o) => $o['option_type'] === 'keyboard');
+$wirelessOptions = array_filter($configOptions, fn($o) => $o['option_type'] === 'wireless');
+$screenOptions = array_filter($configOptions, fn($o) => $o['option_type'] === 'screen');
+
 $stats = [
     'laptops' => count($laptops),
     'questions' => count($questions),
     'total_scores' => $pdo->query('SELECT COUNT(*) FROM scores')->fetchColumn(),
-    'admins' => count($adminUsers)
+    'admins' => count($adminUsers),
+    'model_rules' => count($modelRules)
 ];
 
 // Als specifieke vraag geselecteerd voor bewerken
@@ -784,20 +988,30 @@ if (isset($_GET['edit_laptop_config'])) {
             $opts = $optStmt->fetchAll(PDO::FETCH_ASSOC);
 
             $optionsByFieldId = [];
+            $optionsDetailsByFieldId = [];
             foreach ($opts as $o) {
                 $fid = (int)$o['field_id'];
                 if (!isset($optionsByFieldId[$fid])) {
                     $optionsByFieldId[$fid] = [];
+                    $optionsDetailsByFieldId[$fid] = [];
                 }
                 $optionsByFieldId[$fid][] = (string)$o['option_label'];
+                $optionsDetailsByFieldId[$fid][] = [
+                    'id' => (int)$o['id'],
+                    'label' => (string)$o['option_label'],
+                    'value' => (string)$o['option_value'],
+                    'image_path' => $o['image_path'] ?? null,
+                ];
             }
 
             foreach ($rows as $r) {
                 $fid = (int)$r['id'];
                 $r['options_text'] = '';
+                $r['options_details'] = [];
                 if (($r['field_type'] ?? '') === 'select') {
                     $list = $optionsByFieldId[$fid] ?? [];
                     $r['options_text'] = implode("\n", $list);
+                    $r['options_details'] = $optionsDetailsByFieldId[$fid] ?? [];
                 }
                 $editLaptopConfigFields[(string)$r['field_key']] = $r;
             }
@@ -805,6 +1019,15 @@ if (isset($_GET['edit_laptop_config'])) {
     } catch (Exception $e) {
         $error = 'Fout bij laden van laptop configuratie: ' . $e->getMessage();
     }
+}
+
+// Als specifieke modelnummer regel geselecteerd voor bewerken
+$editModelRule = null;
+if (isset($_GET['edit_model_rule'])) {
+    $editId = (int)$_GET['edit_model_rule'];
+    $stmt = $pdo->prepare('SELECT * FROM model_number_rules WHERE id = ?');
+    $stmt->execute([$editId]);
+    $editModelRule = $stmt->fetch();
 }
 ?>
 <!doctype html>
@@ -870,6 +1093,7 @@ if (isset($_GET['edit_laptop_config'])) {
     <div class="tabs">
         <div class="tab active" onclick="switchTab('vragen')">📝 Vragen Beheren</div>
         <div class="tab" onclick="switchTab('laptops')">💻 Laptops Overzicht</div>
+        <div class="tab" onclick="switchTab('modelnummers')">🔢 Modelnummers</div>
         <div class="tab" onclick="switchTab('admins')">👥 Admin Gebruikers</div>
     </div>
 
@@ -1171,6 +1395,35 @@ if (isset($_GET['edit_laptop_config'])) {
                                     <label>Keuzes (1 per regel)</label>
                                     <textarea name="field_options[<?php echo htmlspecialchars($key); ?>]" rows="4" placeholder="Bijv. 256GB\n512GB\n1TB"><?php echo htmlspecialchars($optionsText); ?></textarea>
                                 </div>
+
+                                <?php if (!empty($row['options_details'])): ?>
+                                <div style="margin-top:16px; padding-top:16px; border-top:1px solid #e5e7eb;">
+                                    <label style="margin-bottom:12px; display:block;">Afbeeldingen per optie:</label>
+                                    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:12px;">
+                                        <?php foreach ($row['options_details'] as $opt): ?>
+                                        <div style="background:#f9fafb; border-radius:8px; padding:12px; border:1px solid #e5e7eb;">
+                                            <div style="font-weight:600; margin-bottom:8px;"><?php echo htmlspecialchars($opt['label']); ?></div>
+                                            <?php if ($opt['image_path']): ?>
+                                                <div style="margin-bottom:8px;">
+                                                    <img src="<?php echo htmlspecialchars($opt['image_path']); ?>" alt="<?php echo htmlspecialchars($opt['label']); ?>" style="max-width:100%; max-height:80px; border-radius:4px; object-fit:cover;">
+                                                </div>
+                                                <a href="?panel=1&delete_option_image=<?php echo $opt['id']; ?>&laptop_id=<?php echo (int)$editLaptopConfig['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Afbeelding verwijderen?');">Verwijderen</a>
+                                            <?php else: ?>
+                                                <div style="background:#f3f4f6; border:2px dashed #d1d5db; border-radius:6px; padding:16px; text-align:center; margin-bottom:8px;">
+                                                    <span style="color:#6b7280; font-size:0.85em;">Geen afbeelding</span>
+                                                </div>
+                                            <?php endif; ?>
+                                            <form method="post" enctype="multipart/form-data" style="margin-top:8px;">
+                                                <input type="hidden" name="option_id" value="<?php echo $opt['id']; ?>">
+                                                <input type="hidden" name="laptop_id" value="<?php echo (int)$editLaptopConfig['id']; ?>">
+                                                <input type="file" name="option_image" accept="image/*" style="font-size:0.8em; width:100%; margin-bottom:6px;">
+                                                <button type="submit" name="upload_option_image" class="btn btn-primary btn-small" style="width:100%;">Uploaden</button>
+                                            </form>
+                                        </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <div class="form-group" style="margin-top:10px;">
                                     <label style="display:flex;gap:8px;align-items:center;">
@@ -1212,6 +1465,199 @@ if (isset($_GET['edit_laptop_config'])) {
                 <?php endforeach; ?>
             </tbody>
         </table>
+    </div>
+
+    <!-- TAB: Modelnummers -->
+    <div id="modelnummers" class="tab-content">
+        <h3>Modelnummer Systeem</h3>
+        <p class="muted">Beheer de mapping tussen configuratieopties en modelnummers. Het modelnummer wordt automatisch bepaald op basis van de geselecteerde opties.</p>
+
+        <div class="info mb-20">
+            ℹ️ <strong>Hoe werkt het?</strong><br>
+            1. Klanten selecteren een <strong>toetsenbord</strong> (bijv. Qwerty NL of Azerty BE)<br>
+            2. Klanten selecteren <strong>draadloze verbindingen</strong> (bijv. WLAN of WLAN + WWAN + 4G + GPS)<br>
+            3. Klanten selecteren een <strong>scherm type</strong> (bijv. HD of Full HD + Touchscreen)<br>
+            4. Op basis van deze 3 keuzes wordt automatisch het <strong>juiste modelnummer</strong> getoond (bijv. FZ-55JZ011B4)
+        </div>
+
+        <div style="background:#fff3cd; border-left:4px solid #ffc107; padding:12px 16px; margin-bottom:20px; border-radius:4px;">
+            <strong>💡 Tip:</strong> Voor elk toetsenbord type (Qwerty NL, Azerty BE, etc.) moet je aparte modelnummer regels aanmaken voor alle combinaties van draadloos + scherm.
+        </div>
+
+        <div style="display:flex; gap:12px; margin-bottom:20px;">
+            <button class="cta" onclick="document.getElementById('addModelRuleModal').style.display='block'">
+                ➕ Nieuwe Modelnummer Regel
+            </button>
+            <button class="btn btn-secondary" onclick="document.getElementById('addConfigOptionModal').style.display='block'">
+                ⚙️ Optie Toevoegen
+            </button>
+        </div>
+
+        <?php if ($editModelRule): ?>
+            <div class="edit-section">
+                <h4>✏️ Modelnummer Regel Bewerken</h4>
+                <form method="post">
+                    <input type="hidden" name="rule_id" value="<?php echo $editModelRule['id']; ?>">
+
+                    <div class="form-group">
+                        <label>Toetsenbord *</label>
+                        <select name="keyboard_type" required>
+                            <?php foreach ($keyboardOptions as $opt): ?>
+                                <option value="<?php echo htmlspecialchars($opt['option_value']); ?>" <?php echo $opt['option_value'] === $editModelRule['keyboard_type'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($opt['option_value']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Draadloze Verbinding *</label>
+                        <select name="wireless_type" required>
+                            <?php foreach ($wirelessOptions as $opt): ?>
+                                <option value="<?php echo htmlspecialchars($opt['option_value']); ?>" <?php echo $opt['option_value'] === $editModelRule['wireless_type'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($opt['option_value']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Scherm *</label>
+                        <select name="screen_type" required>
+                            <?php foreach ($screenOptions as $opt): ?>
+                                <option value="<?php echo htmlspecialchars($opt['option_value']); ?>" <?php echo $opt['option_value'] === $editModelRule['screen_type'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($opt['option_value']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Modelnummer *</label>
+                        <input type="text" name="model_number" value="<?php echo htmlspecialchars($editModelRule['model_number']); ?>" required placeholder="bijv. FZ-55JZ011B4">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Prijs (EUR)</label>
+                        <input type="number" name="price_eur" step="0.01" min="0" value="<?php echo htmlspecialchars(number_format((float)$editModelRule['price_eur'], 2, '.', '')); ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Beschrijving (optioneel)</label>
+                        <textarea name="description"><?php echo htmlspecialchars($editModelRule['description'] ?? ''); ?></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label><input type="checkbox" name="is_active" <?php echo !empty($editModelRule['is_active']) ? 'checked' : ''; ?>> Actief</label>
+                    </div>
+
+                    <button type="submit" name="update_model_rule" class="btn btn-primary">💾 Opslaan</button>
+                    <a href="admin.php?panel=1" class="btn btn-secondary">❌ Annuleren</a>
+                </form>
+            </div>
+        <?php endif; ?>
+
+        <h4 style="margin-top:24px;">Modelnummer Regels</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Toetsenbord</th>
+                    <th>Draadloos</th>
+                    <th>Scherm</th>
+                    <th>Modelnummer</th>
+                    <th class="col-100">Prijs</th>
+                    <th class="col-100">Status</th>
+                    <th class="col-200">Acties</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($modelRules)): ?>
+                <tr>
+                    <td colspan="7" class="empty-table">
+                        <div class="muted">
+                            <div class="emoji-large">🔢</div>
+                            Nog geen modelnummer regels. Klik op "Nieuwe Modelnummer Regel" om te beginnen.
+                        </div>
+                    </td>
+                </tr>
+                <?php else: ?>
+                    <?php foreach ($modelRules as $rule): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($rule['keyboard_type']); ?></td>
+                        <td><?php echo htmlspecialchars($rule['wireless_type']); ?></td>
+                        <td><?php echo htmlspecialchars($rule['screen_type']); ?></td>
+                        <td><strong><?php echo htmlspecialchars($rule['model_number']); ?></strong></td>
+                        <td>€<?php echo number_format($rule['price_eur'], 2, ',', '.'); ?></td>
+                        <td><?php echo $rule['is_active'] ? '<span style="color:green;">✓ Actief</span>' : '<span style="color:red;">✗ Inactief</span>'; ?></td>
+                        <td>
+                            <a href="?panel=1&edit_model_rule=<?php echo $rule['id']; ?>" class="btn btn-secondary btn-small">✏️ Bewerken</a>
+                            <a href="?panel=1&delete_model_rule=<?php echo $rule['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze regel wilt verwijderen?');">🗑️ Verwijderen</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+
+        <h4 style="margin-top:32px;">Configuratie Opties Beheren</h4>
+        <p class="muted">Deze opties zijn beschikbaar in de dropdowns voor klanten. Voeg hier nieuwe toetsenbord types, draadloze opties of scherm types toe.</p>
+
+        <div style="background:#e3f2fd; border-left:4px solid #2196f3; padding:12px 16px; margin-bottom:16px; border-radius:4px;">
+            <strong>📝 Voorbeeld:</strong> Als je een nieuw toetsenbord type toevoegt (bijv. "Qwerty (UK)"), moet je daarna ook nieuwe <strong>Modelnummer Regels</strong> aanmaken voor alle combinaties met dit toetsenbord.
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; margin-top:16px;">
+            <!-- Toetsenborden -->
+            <div class="card">
+                <h5>Toetsenbord Opties</h5>
+                <table style="margin-top:12px;">
+                    <tbody>
+                        <?php foreach ($keyboardOptions as $opt): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($opt['option_value']); ?></td>
+                            <td class="col-50">
+                                <a href="?panel=1&delete_config_option=<?php echo $opt['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze optie wilt verwijderen?');">🗑️</a>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Draadloze Verbindingen -->
+            <div class="card">
+                <h5>Draadloze Verbindingen</h5>
+                <table style="margin-top:12px;">
+                    <tbody>
+                        <?php foreach ($wirelessOptions as $opt): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($opt['option_value']); ?></td>
+                            <td class="col-50">
+                                <a href="?panel=1&delete_config_option=<?php echo $opt['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze optie wilt verwijderen?');">🗑️</a>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Schermen -->
+            <div class="card">
+                <h5>Scherm Opties</h5>
+                <table style="margin-top:12px;">
+                    <tbody>
+                        <?php foreach ($screenOptions as $opt): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($opt['option_value']); ?></td>
+                            <td class="col-50">
+                                <a href="?panel=1&delete_config_option=<?php echo $opt['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Weet je zeker dat je deze optie wilt verwijderen?');">🗑️</a>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <!-- TAB: Admin Gebruikers -->
@@ -1369,7 +1815,104 @@ if (isset($_GET['edit_laptop_config'])) {
             <button type="button" class="btn btn-secondary" onclick="document.getElementById('addLaptopModal').style.display='none'">Annuleren</button>
         </form>
     </div>
-    
+
+</div>
+
+<!-- Modal: Nieuwe Modelnummer Regel -->
+<div id="addModelRuleModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('addModelRuleModal').style.display='none'">&times;</span>
+        <h3>➕ Nieuwe Modelnummer Regel</h3>
+
+        <p class="muted" style="margin-bottom:16px;">
+            Selecteer de 3 opties en voer het bijbehorende modelnummer in. Bijvoorbeeld:<br>
+            <strong>Azerty (BE)</strong> + <strong>WLAN</strong> + <strong>HD scherm</strong> = <strong>FZ-55G6601Z4</strong>
+        </p>
+
+        <form method="post">
+            <div class="form-group">
+                <label>Toetsenbord *</label>
+                <select name="keyboard_type" required>
+                    <option value="">-- Selecteer --</option>
+                    <?php foreach ($keyboardOptions as $opt): ?>
+                        <option value="<?php echo htmlspecialchars($opt['option_value']); ?>">
+                            <?php echo htmlspecialchars($opt['option_value']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Draadloze Verbinding *</label>
+                <select name="wireless_type" required>
+                    <option value="">-- Selecteer --</option>
+                    <?php foreach ($wirelessOptions as $opt): ?>
+                        <option value="<?php echo htmlspecialchars($opt['option_value']); ?>">
+                            <?php echo htmlspecialchars($opt['option_value']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Scherm *</label>
+                <select name="screen_type" required>
+                    <option value="">-- Selecteer --</option>
+                    <?php foreach ($screenOptions as $opt): ?>
+                        <option value="<?php echo htmlspecialchars($opt['option_value']); ?>">
+                            <?php echo htmlspecialchars($opt['option_value']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Modelnummer *</label>
+                <input type="text" name="model_number" required placeholder="bijv. FZ-55JZ011B4">
+            </div>
+
+            <div class="form-group">
+                <label>Prijs (EUR)</label>
+                <input type="number" name="price_eur" step="0.01" min="0" value="0.00">
+            </div>
+
+            <div class="form-group">
+                <label>Beschrijving (optioneel)</label>
+                <textarea name="description" placeholder="Extra informatie over deze configuratie"></textarea>
+            </div>
+
+            <button type="submit" name="add_model_rule" class="btn btn-primary">💾 Regel Toevoegen</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('addModelRuleModal').style.display='none'">Annuleren</button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Nieuwe Configuratie Optie -->
+<div id="addConfigOptionModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('addConfigOptionModal').style.display='none'">&times;</span>
+        <h3>⚙️ Nieuwe Configuratie Optie</h3>
+
+        <form method="post">
+            <div class="form-group">
+                <label>Type *</label>
+                <select name="option_type" required>
+                    <option value="">-- Selecteer --</option>
+                    <option value="keyboard">Toetsenbord</option>
+                    <option value="wireless">Draadloze Verbinding</option>
+                    <option value="screen">Scherm</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Waarde *</label>
+                <input type="text" name="option_value" required placeholder="bijv. Qwerty (UK)">
+            </div>
+
+            <button type="submit" name="add_config_option" class="btn btn-primary">💾 Optie Toevoegen</button>
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('addConfigOptionModal').style.display='none'">Annuleren</button>
+        </form>
+    </div>
 </div>
 
 <script>
@@ -1393,7 +1936,7 @@ function showPasswordModal(adminId, username) {
 }
 
 window.onclick = function(event) {
-    const modals = ['addModal', 'addAdminModal', 'passwordModal', 'addLaptopModal'];
+    const modals = ['addModal', 'addAdminModal', 'passwordModal', 'addLaptopModal', 'addModelRuleModal', 'addConfigOptionModal'];
     modals.forEach(modalId => {
         const modal = document.getElementById(modalId);
         if (event.target == modal) {
@@ -1405,6 +1948,11 @@ window.onclick = function(event) {
 // Activeer automatisch de Laptops-tab bij relevante acties
 <?php if (isset($_GET['edit_laptop']) || isset($_GET['edit_laptop_scores']) || isset($_GET['edit_laptop_config']) || (isset($_POST['add_laptop']) || isset($_POST['update_laptop']) || isset($_POST['update_laptop_scores']) || isset($_POST['update_laptop_config']) || isset($_POST['repair_mappings']))): ?>
 document.addEventListener('DOMContentLoaded', function(){ switchTab('laptops'); });
+<?php endif; ?>
+
+// Activeer automatisch de Modelnummers-tab bij relevante acties
+<?php if (isset($_GET['edit_model_rule']) || isset($_GET['delete_model_rule']) || isset($_GET['delete_config_option']) || isset($_POST['add_model_rule']) || isset($_POST['update_model_rule']) || isset($_POST['add_config_option'])): ?>
+document.addEventListener('DOMContentLoaded', function(){ switchTab('modelnummers'); });
 <?php endif; ?>
 </script>
 </body>

@@ -106,9 +106,14 @@ legend {
 }
 
 label {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     margin: 8px 0;
-    color: #111827
+    color: #111827;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
 }
 
 button.cta {
@@ -177,11 +182,12 @@ button.cta:hover {
 }
 
 .stat-card {
-    background: rgba(255, 255, 255, 0.05);
+    background: #ffffff;
     padding: 20px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid #e5e7eb;
     text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .stat-number {
@@ -195,7 +201,7 @@ button.cta:hover {
     display: flex;
     gap: 8px;
     margin: 20px 0;
-    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 2px solid #e5e7eb;
     flex-wrap: wrap;
 }
 
@@ -203,17 +209,19 @@ button.cta:hover {
     padding: 12px 24px;
     cursor: pointer;
     border-radius: 6px 6px 0 0;
-    background: rgba(255, 255, 255, 0.03);
+    background: #f9fafb;
     transition: all 0.3s;
+    color: #374151;
 }
 
 .tab:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: #f3f4f6;
 }
 
 .tab.active {
-    background: rgba(255, 255, 255, 0.1);
+    background: #ffffff;
     border-bottom: 3px solid #4CAF50;
+    font-weight: 600;
 }
 
 .tab-content {
@@ -233,6 +241,7 @@ button.cta:hover {
     display: block;
     margin-bottom: 8px;
     font-weight: 500;
+    cursor: default;
 }
 
 .form-group input,
@@ -240,11 +249,19 @@ button.cta:hover {
 .form-group textarea {
     width: 100%;
     padding: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #ffffff;
+    border: 1px solid #d1d5db;
     border-radius: 6px;
-    color: inherit;
+    color: #111827;
     font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0, 78, 167, 0.1);
 }
 
 .form-group textarea {
@@ -257,30 +274,30 @@ button.cta:hover {
 }
 
 .success {
-    background: rgba(0, 255, 0, 0.1);
-    color: #0f0;
+    background: #d1fae5;
+    color: #065f46;
     padding: 12px;
     border-radius: 6px;
     margin: 16px 0;
-    border: 1px solid rgba(0, 255, 0, 0.3);
+    border: 1px solid #a7f3d0;
 }
 
 .error {
-    background: rgba(255, 0, 0, 0.1);
-    color: #ff6b6b;
+    background: #fee2e2;
+    color: #991b1b;
     padding: 12px;
     border-radius: 6px;
     margin: 16px 0;
-    border: 1px solid rgba(255, 0, 0, 0.3);
+    border: 1px solid #fecaca;
 }
 
 .info {
-    background: rgba(33, 150, 243, 0.1);
-    color: #42a5f5;
+    background: #dbeafe;
+    color: #1e40af;
     padding: 12px;
     border-radius: 6px;
     margin: 16px 0;
-    border: 1px solid rgba(33, 150, 243, 0.3);
+    border: 1px solid #bfdbfe;
 }
 
 table {
@@ -293,16 +310,17 @@ table th,
 table td {
     padding: 12px;
     text-align: left;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid #e5e7eb;
 }
 
 table th {
     font-weight: 600;
-    background: rgba(255, 255, 255, 0.05);
+    background: #f9fafb;
+    color: #374151;
 }
 
 table tr:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: #f9fafb;
 }
 
 .btn {
@@ -327,8 +345,9 @@ table tr:hover {
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.1);
-    color: inherit;
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
 }
 
 .btn-small {
@@ -349,15 +368,17 @@ table tr:hover {
 }
 
 .modal-content {
-    background: #1a1a1a;
+    background: #ffffff;
     margin: 5% auto;
     padding: 30px;
     border-radius: 12px;
     width: 90%;
     max-width: 600px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     max-height: 80vh;
     overflow-y: auto;
+    color: #111827;
 }
 
 .close {
@@ -365,11 +386,11 @@ table tr:hover {
     font-size: 28px;
     font-weight: bold;
     cursor: pointer;
-    color: #aaa;
+    color: #9ca3af;
 }
 
 .close:hover {
-    color: #fff;
+    color: #374151;
 }
 
 .score-grid {
@@ -378,15 +399,15 @@ table tr:hover {
 }
 
 .score-item {
-    background: rgba(255, 255, 255, 0.03);
+    background: #f9fafb;
     padding: 12px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid #e5e7eb;
 }
 
 .helper-text {
     font-size: 0.85em;
-    color: rgba(255, 255, 255, 0.5);
+    color: #6b7280;
     margin-top: 4px;
 }
 
@@ -397,14 +418,15 @@ table tr:hover {
 }
 
 .user-badge {
-    background: rgba(255, 255, 255, 0.1);
+    background: #e5e7eb;
     padding: 6px 12px;
     border-radius: 20px;
     font-size: 0.9em;
+    color: #374151;
 }
 
 .edit-section {
-    background: rgba(255, 255, 255, 0.05);
+    background: #f0fdf4;
     padding: 20px;
     border-radius: 8px;
     margin-bottom: 20px;
@@ -412,7 +434,7 @@ table tr:hover {
 }
 
 .current-user {
-    background: rgba(76, 175, 80, 0.2);
+    background: #dcfce7;
 }
 
 /* Utilities used to replace inline styles */
@@ -504,9 +526,10 @@ table tr:hover {
     max-width: 400px;
     margin: 100px auto;
     padding: 40px;
-    background: rgba(255, 255, 255, 0.05);
+    background: #ffffff;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 .login-logo {
@@ -522,12 +545,12 @@ table tr:hover {
 }
 
 .error-message {
-    background: rgba(255, 0, 0, 0.1);
-    color: #ff6b6b;
+    background: #fee2e2;
+    color: #991b1b;
     padding: 12px;
     border-radius: 6px;
     margin-bottom: 20px;
-    border: 1px solid rgba(255, 0, 0, 0.3);
+    border: 1px solid #fecaca;
 }
 
 .login-btn {
@@ -688,6 +711,17 @@ table tr:hover {
     letter-spacing: 0.6px;
     margin-bottom: 10px;
     text-transform: uppercase;
+    overflow: hidden;
+}
+
+.choice-card .choice-media-image {
+    padding: 0;
+}
+
+.choice-card .choice-media-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 .choice-card:hover {
@@ -878,9 +912,14 @@ legend {
 }
 
 label {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     margin: 8px 0;
-    color: #111827
+    color: #111827;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
 }
 
 button.cta {
@@ -989,4 +1028,317 @@ button.cta:hover {
     }
 }
 
-/* (step styles consolidated above) */
+/* =========================================================================
+   ADMIN PANEL DARK THEME - ALL TEXT WHITE
+   ========================================================================= */
+body.admin-theme,
+body.admin-theme * {
+    color: #ffffff !important;
+}
+
+body.admin-theme {
+    background: #0f0f0f !important;
+}
+
+body.admin-theme .site-header {
+    background: #1a1a1a !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+body.admin-theme .hero {
+    background: #1a1a1a !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.admin-theme .stat-card {
+    background: #1a1a1a !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+body.admin-theme .tabs {
+    border-bottom-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+body.admin-theme .tab {
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+body.admin-theme .tab:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.admin-theme .tab.active {
+    background: rgba(255, 255, 255, 0.12) !important;
+    border-bottom: 3px solid #4CAF50 !important;
+}
+
+body.admin-theme table {
+    background: #1a1a1a !important;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+body.admin-theme table th {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.admin-theme table tr:hover {
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+body.admin-theme .card {
+    background: #1a1a1a !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.admin-theme .edit-section {
+    background: #1f1f1f !important;
+    border-color: #4CAF50 !important;
+}
+
+body.admin-theme input,
+body.admin-theme select,
+body.admin-theme textarea {
+    background: #2a2a2a !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+body.admin-theme select option {
+    background: #2a2a2a !important;
+}
+
+body.admin-theme input[type="checkbox"],
+body.admin-theme input[type="radio"] {
+    accent-color: #4CAF50;
+}
+
+body.admin-theme input::placeholder,
+body.admin-theme textarea::placeholder {
+    color: #aaa !important;
+}
+
+body.admin-theme input:focus,
+body.admin-theme select:focus,
+body.admin-theme textarea:focus {
+    border-color: #4CAF50 !important;
+    outline: none;
+}
+
+body.admin-theme .info {
+    background: rgba(33, 150, 243, 0.2) !important;
+    border-color: rgba(33, 150, 243, 0.5) !important;
+}
+
+body.admin-theme .success {
+    background: rgba(76, 175, 80, 0.2) !important;
+    border-color: rgba(76, 175, 80, 0.5) !important;
+}
+
+body.admin-theme .error {
+    background: rgba(244, 67, 54, 0.2) !important;
+    border-color: rgba(244, 67, 54, 0.5) !important;
+}
+
+body.admin-theme .modal-content {
+    background: #1a1a1a !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+body.admin-theme .btn-secondary {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+body.admin-theme .user-badge {
+    background: rgba(76, 175, 80, 0.2) !important;
+}
+
+body.admin-theme .score-item {
+    background: #1f1f1f !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.admin-theme .current-user {
+    background: rgba(76, 175, 80, 0.15) !important;
+}
+
+/* Admin tip/warning boxes */
+body.admin-theme [style*="background:#fff3cd"] {
+    background: rgba(255, 193, 7, 0.2) !important;
+}
+
+body.admin-theme [style*="background:#e3f2fd"] {
+    background: rgba(33, 150, 243, 0.2) !important;
+}
+
+/* Special colors (green for stats/accents, blue for links) */
+body.admin-theme .stat-number {
+    color: #4CAF50 !important;
+}
+
+body.admin-theme .btn-primary {
+    background: #4CAF50 !important;
+}
+
+body.admin-theme .btn-danger {
+    background: #f44336 !important;
+}
+
+body.admin-theme a {
+    color: #90caf9 !important;
+}
+
+body.admin-theme a:hover {
+    color: #bbdefb !important;
+}
+
+/* =========================================================================
+   IMPROVED RESULTS CARDS
+   ========================================================================= */
+.result-card {
+    background: #ffffff;
+    border: 2px solid #eef2f7;
+    border-radius: 12px;
+    padding: 20px;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+    cursor: pointer;
+}
+
+.result-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0, 78, 167, 0.12);
+}
+
+.result-card--best {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, rgba(0, 78, 167, 0.03) 0%, rgba(0, 78, 167, 0.08) 100%);
+    position: relative;
+}
+
+.result-card--best::before {
+    content: "Beste match";
+    position: absolute;
+    top: -12px;
+    left: 20px;
+    background: var(--accent);
+    color: white;
+    font-size: 0.75em;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.result-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.result-card__name {
+    font-size: 1.25em;
+    font-weight: 700;
+    margin: 0;
+    color: #111827;
+}
+
+.result-card__score {
+    background: rgba(76, 175, 80, 0.15);
+    color: #2e7d32;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.result-card__model {
+    color: var(--muted);
+    font-size: 0.9em;
+    margin-bottom: 12px;
+}
+
+.result-card__reasons {
+    background: #f7f9fc;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-top: 16px;
+}
+
+.result-card__reasons-title {
+    font-weight: 600;
+    font-size: 0.85em;
+    color: #111827;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.result-card__reasons-title::before {
+    content: "✓";
+    color: #4CAF50;
+}
+
+.result-card__reasons-list {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.9em;
+    color: var(--muted);
+}
+
+.result-card__reasons-list li {
+    margin-bottom: 4px;
+}
+
+.result-card__price {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: var(--accent);
+    margin-top: 16px;
+}
+
+.result-card__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    text-decoration: none;
+    margin-top: 16px;
+    transition: background 150ms ease, transform 150ms ease;
+}
+
+.result-card__cta:hover {
+    background: #003d85;
+    transform: translateX(4px);
+}
+
+.result-card__cta::after {
+    content: "→";
+}
+
+/* Other matches grid */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.results-grid .result-card {
+    padding: 16px;
+}
+
+.results-grid .result-card__name {
+    font-size: 1.1em;
+}
+
+.results-grid .result-card__price {
+    font-size: 1.2em;
+}

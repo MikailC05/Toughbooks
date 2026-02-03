@@ -618,10 +618,10 @@ if (isset($_GET['delete_option_image'])) {
 // ============================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_laptop_config'])) {
     $laptopId = (int)($_POST['laptop_id'] ?? 0);
-
-    if ($laptopId <= 0) {
-        $error = 'Ongeldige laptop.';
-    } else {
+if ($laptopId > 0 && !$error) {
+    header('Location: ...');
+    exit;
+} {
         try {
             ensureLaptopConfigSchema($pdo);
 

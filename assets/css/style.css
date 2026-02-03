@@ -349,7 +349,7 @@ table tr:hover {
 }
 
 .modal-content {
-    background: #1a1a1a;
+    background: #fff;
     margin: 5% auto;
     padding: 30px;
     border-radius: 12px;

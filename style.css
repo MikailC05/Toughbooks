@@ -222,7 +222,7 @@
         }
         
         .step-indicator {
-            margin-top: 14px;
+            top: -15px;
             font-size: 13px;
             opacity: 0.95;
             letter-spacing: 0.4px;

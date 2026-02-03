@@ -112,7 +112,7 @@ function normalizeKeyLabel(string $key, string $fallback): string
     // Quick nicer titles for the screenshot-like UI
     $map = [
         'model_variant' => 'Model variant',
-        'processor' => 'Prozessor',
+        'processor' => 'Processor',
         'storage' => 'Opslag',
         'ram' => 'RAM',
         'lte' => '4G LTE',
@@ -185,11 +185,20 @@ function normalizeKeyLabel(string $key, string $fallback): string
                                             $lab = (string)$o['option_label'];
                                             $isSelected = ($val !== '' && $val === $default);
                                         ?>
+                                        <?php
+                                            $imagePath = $o['image_path'] ?? null;
+                                            $hasImage = !empty($imagePath) && file_exists(__DIR__ . '/' . $imagePath);
+                                        ?>
                                         <button type="button"
                                                 class="choice-card <?php echo $isSelected ? 'selected' : ''; ?>"
                                                 data-choice
                                                 data-value="<?php echo htmlspecialchars($val); ?>">
                                             <span class="dot" aria-hidden="true"></span>
+                                            <?php if ($hasImage): ?>
+                                            <div class="choice-media choice-media-image" aria-hidden="true">
+                                                <img src="<?php echo htmlspecialchars($imagePath); ?>" alt="<?php echo htmlspecialchars($lab); ?>">
+                                            </div>
+                                            <?php else: ?>
                                             <div class="choice-media" aria-hidden="true">
                                                 <?php
                                                     $mediaText = $lab;
@@ -197,10 +206,11 @@ function normalizeKeyLabel(string $key, string $fallback): string
                                                     if ($fieldKey === 'ram') { $mediaText = 'RAM'; }
                                                     if ($fieldKey === 'storage') { $mediaText = 'SSD'; }
                                                     if ($fieldKey === 'battery') { $mediaText = 'BAT'; }
-                                                    if ($fieldKey === 'model_variant') { $mediaText = ($lab !== '') ? $lab : 'MODEL'; }
+                                                    if ($fieldKey === 'model_variant') { $mediaText = ($lab !== '') ? strtoupper($lab) : 'MODEL'; }
                                                     echo htmlspecialchars($mediaText);
                                                 ?>
                                             </div>
+                                            <?php endif; ?>
                                             <div class="choice-label"><?php echo htmlspecialchars($lab); ?></div>
                                             <?php if (!empty($laptop['model_code']) && $fieldKey === 'model_variant'): ?>
                                                 <div class="choice-sub"><?php echo htmlspecialchars($laptop['model_code']); ?></div>

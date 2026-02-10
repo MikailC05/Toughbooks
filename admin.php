@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/src/Database.php';
 require_once __DIR__ . '/src/Auth.php';
+require_once __DIR__ . '/src/ModelNumber.php';
 
 // Forceer altijd eerst de login-pagina als iemand admin.php opent.
 // Het admin panel zelf wordt benaderd via admin.php?panel=1.
@@ -14,9 +15,82 @@ if (!isset($_GET['panel']) || (string)$_GET['panel'] !== '1') {
 Auth::requireLogin();
 
 $pdo = Database::getInstance()->getPdo();
+$pdo->exec("SET NAMES utf8mb4");
 $message = '';
 $error = '';
 $currentUser = Auth::getCurrentUser();
+
+// Ensure model-number rules schema
+try {
+    ModelNumber::ensureSchema($pdo);
+} catch (Exception $e) {
+    // Non-fatal: admin can still load, but model rule UI may fail.
+}
+
+// ============================================================================
+// MODELNUMMER REGELS (per laptop)
+// ============================================================================
+if (isset($_GET['delete_model_rule']) && isset($_GET['laptop_id']) && ctype_digit((string)$_GET['laptop_id'])) {
+    $laptopId = (int)$_GET['laptop_id'];
+    $ruleId = (int)$_GET['delete_model_rule'];
+    try {
+        $stmt = $pdo->prepare('DELETE FROM laptop_model_rules WHERE id = ? AND laptop_id = ?');
+        $stmt->execute([$ruleId, $laptopId]);
+        $message = 'Modelnummer regel verwijderd.';
+        header('Location: admin.php?panel=1&edit_laptop_config=' . $laptopId);
+        exit;
+    } catch (Exception $e) {
+        $error = 'Fout bij verwijderen van modelnummer regel: ' . $e->getMessage();
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_model_rule'])) {
+    $laptopId = isset($_POST['laptop_id']) && ctype_digit((string)$_POST['laptop_id']) ? (int)$_POST['laptop_id'] : 0;
+    $ruleId = isset($_POST['rule_id']) && ctype_digit((string)$_POST['rule_id']) ? (int)$_POST['rule_id'] : 0;
+    $modelNumber = trim((string)($_POST['model_number'] ?? ''));
+    $sortOrder = isset($_POST['sort_order']) && is_numeric($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
+
+    $conditionsRaw = $_POST['conditions'] ?? [];
+    $conditions = [];
+    if (is_array($conditionsRaw)) {
+        foreach ($conditionsRaw as $k => $v) {
+            $key = trim((string)$k);
+            $val = trim((string)$v);
+            if ($key === '' || $val === '') {
+                continue;
+            }
+            $conditions[$key] = $val;
+        }
+    }
+
+    if ($laptopId <= 0) {
+        $error = 'Ongeldige laptop id.';
+    } elseif ($modelNumber === '') {
+        $error = 'Modelnummer mag niet leeg zijn.';
+    } else {
+        try {
+            $json = json_encode($conditions, JSON_UNESCAPED_UNICODE);
+            if ($json === false) {
+                $json = '{}';
+            }
+
+            if ($ruleId > 0) {
+                $stmt = $pdo->prepare('UPDATE laptop_model_rules SET model_number = ?, conditions_json = ?, sort_order = ?, is_active = 1 WHERE id = ? AND laptop_id = ?');
+                $stmt->execute([$modelNumber, $json, $sortOrder, $ruleId, $laptopId]);
+                $message = 'Modelnummer regel bijgewerkt.';
+            } else {
+                $stmt = $pdo->prepare('INSERT INTO laptop_model_rules (laptop_id, model_number, conditions_json, sort_order, is_active) VALUES (?, ?, ?, ?, 1)');
+                $stmt->execute([$laptopId, $modelNumber, $json, $sortOrder]);
+                $message = 'Modelnummer regel toegevoegd.';
+            }
+
+            header('Location: admin.php?panel=1&edit_laptop_config=' . $laptopId);
+            exit;
+        } catch (Exception $e) {
+            $error = 'Fout bij opslaan van modelnummer regel: ' . $e->getMessage();
+        }
+    }
+}
 
 // ============================================================================
 // LAPTOP CONFIGURATIE (per-laptop extra opties)
@@ -61,6 +135,9 @@ function ensureLaptopConfigSchema(PDO $pdo): void
 function getDefaultLaptopConfigFieldDefinitions(): array
 {
     return [
+        'keyboard_layout' => ['label' => 'Toetsenbordindeling', 'type' => 'select', 'default_options' => ['Qwerty toetsenbord (NL)', 'Azerty toetsenbord (BE)']],
+        'wireless_connections' => ['label' => 'Draadloze verbindingen', 'type' => 'select', 'default_options' => ['WLAN', 'WLAN / WWAN / 4G / GPS']],
+        'display_type' => ['label' => 'HD of FULL HD & TOUCHSCREEN', 'type' => 'select', 'default_options' => ['HD scherm', 'Full HD & Touchscreen']],
         'model_variant' => ['label' => 'Model variant', 'type' => 'select', 'default_options' => ['Tablet', 'Detachable']],
         'processor' => ['label' => 'Processor', 'type' => 'select', 'default_options' => ['Intel Core i5', 'Intel Core i7']],
         'storage' => ['label' => 'Opslag', 'type' => 'select', 'default_options' => ['256GB', '512GB']],
@@ -1186,6 +1263,159 @@ if (isset($_GET['edit_laptop_config'])) {
                     <button type="submit" name="update_laptop_config" class="btn btn-primary mt-20">💾 Configuratie Opslaan</button>
                     <a href="admin.php?panel=1" class="btn btn-secondary mt-20">❌ Sluiten</a>
                 </form>
+
+                <?php
+                    // Model number rules UI
+                    $ruleEdit = null;
+                    if (isset($_GET['edit_model_rule']) && ctype_digit((string)$_GET['edit_model_rule'])) {
+                        $rid = (int)$_GET['edit_model_rule'];
+                        $stmt = $pdo->prepare('SELECT id, model_number, conditions_json, sort_order FROM laptop_model_rules WHERE id = ? AND laptop_id = ?');
+                        $stmt->execute([$rid, (int)$editLaptopConfig['id']]);
+                        $ruleEdit = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                    }
+
+                    // Build select-field options for conditions
+                    $selectFieldRows = $pdo->prepare('SELECT id, field_key, field_label, field_type, is_active FROM laptop_config_fields WHERE laptop_id = ? AND is_active = 1 ORDER BY sort_order');
+                    $selectFieldRows->execute([(int)$editLaptopConfig['id']]);
+                    $fieldRows = $selectFieldRows->fetchAll(PDO::FETCH_ASSOC);
+
+                    $fieldIds = [];
+                    $selectFields = [];
+                    foreach ($fieldRows as $fr) {
+                        if ((string)$fr['field_type'] !== 'select') {
+                            continue;
+                        }
+                        $fid = (int)$fr['id'];
+                        $fieldIds[] = $fid;
+                        $selectFields[(string)$fr['field_key']] = [
+                            'label' => (string)$fr['field_label'],
+                            'options' => [],
+                        ];
+                    }
+
+                    if (!empty($fieldIds)) {
+                        $in = implode(',', array_fill(0, count($fieldIds), '?'));
+                        $optStmt = $pdo->prepare('SELECT field_id, option_label, option_value FROM laptop_config_field_options WHERE field_id IN (' . $in . ') ORDER BY sort_order');
+                        $optStmt->execute($fieldIds);
+                        $optRows = $optStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                        // Map field_id -> key
+                        $keyById = [];
+                        foreach ($fieldRows as $fr) {
+                            if ((string)$fr['field_type'] === 'select') {
+                                $keyById[(int)$fr['id']] = (string)$fr['field_key'];
+                            }
+                        }
+                        foreach ($optRows as $or) {
+                            $fid = (int)$or['field_id'];
+                            $key = $keyById[$fid] ?? null;
+                            if (!$key || !isset($selectFields[$key])) {
+                                continue;
+                            }
+                            $selectFields[$key]['options'][] = [
+                                'label' => (string)$or['option_label'],
+                                'value' => (string)$or['option_value'],
+                            ];
+                        }
+                    }
+
+                    $ruleDefaults = [
+                        'rule_id' => $ruleEdit ? (int)$ruleEdit['id'] : 0,
+                        'model_number' => $ruleEdit ? (string)$ruleEdit['model_number'] : '',
+                        'sort_order' => $ruleEdit ? (int)($ruleEdit['sort_order'] ?? 0) : 0,
+                        'conditions' => [],
+                    ];
+                    if ($ruleEdit && !empty($ruleEdit['conditions_json'])) {
+                        $decoded = json_decode((string)$ruleEdit['conditions_json'], true);
+                        if (is_array($decoded)) {
+                            foreach ($decoded as $k => $v) {
+                                if (is_string($k) && (is_string($v) || is_numeric($v))) {
+                                    $ruleDefaults['conditions'][$k] = (string)$v;
+                                }
+                            }
+                        }
+                    }
+
+                    $rules = [];
+                    try {
+                        $rules = ModelNumber::getRules($pdo, (int)$editLaptopConfig['id']);
+                    } catch (Exception $e) {
+                        $rules = [];
+                    }
+                ?>
+
+                <div class="edit-section" style="margin-top:24px;">
+                    <h4>🔢 Modelnummers (automatisch)</h4>
+                    <p class="muted mb-20">Koppel een combinatie van onderdelen aan een modelnummer. Lege velden betekenen: maakt niet uit.</p>
+
+                    <?php if (empty($selectFields)): ?>
+                        <div class="info">ℹ️ Geen select-opties gevonden om regels op te baseren. Zet eerst minstens 1 select-veld actief (bijv. Toetsenbordindeling).</div>
+                    <?php else: ?>
+                        <?php if (!empty($rules)): ?>
+                            <div class="card" style="margin: 12px 0;">
+                                <strong>Huidige regels</strong>
+                                <div style="margin-top:10px;display:grid;gap:8px;">
+                                    <?php foreach ($rules as $r): ?>
+                                        <?php
+                                            $parts = [];
+                                            foreach (($r['conditions'] ?? []) as $k => $v) {
+                                                $label = $selectFields[$k]['label'] ?? $k;
+                                                $parts[] = $label . ': ' . $v;
+                                            }
+                                            $condText = !empty($parts) ? implode(' • ', $parts) : '(altijd)';
+                                        ?>
+                                        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid #eef2f7;border-radius:10px;padding:10px 12px;">
+                                            <div>
+                                                <div style="font-weight:800;"><?php echo htmlspecialchars((string)$r['model_number']); ?></div>
+                                                <div class="muted" style="font-size:0.9em;"><?php echo htmlspecialchars($condText); ?><?php echo ((int)$r['sort_order'] !== 0) ? ' • prioriteit: ' . (int)$r['sort_order'] : ''; ?></div>
+                                            </div>
+                                            <div style="display:flex;gap:8px;">
+                                                <a class="btn btn-secondary btn-small" href="?panel=1&edit_laptop_config=<?php echo (int)$editLaptopConfig['id']; ?>&edit_model_rule=<?php echo (int)$r['id']; ?>">✏️ Bewerken</a>
+                                                <a class="btn btn-danger btn-small" href="?panel=1&edit_laptop_config=<?php echo (int)$editLaptopConfig['id']; ?>&laptop_id=<?php echo (int)$editLaptopConfig['id']; ?>&delete_model_rule=<?php echo (int)$r['id']; ?>" onclick="return confirm('Regel verwijderen?');">🗑️</a>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <form method="post" class="card" style="margin: 12px 0;">
+                            <input type="hidden" name="laptop_id" value="<?php echo (int)$editLaptopConfig['id']; ?>">
+                            <input type="hidden" name="rule_id" value="<?php echo (int)$ruleDefaults['rule_id']; ?>">
+
+                            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                                <div class="form-group" style="flex:1;min-width:240px;">
+                                    <label>Modelnummer</label>
+                                    <input type="text" name="model_number" value="<?php echo htmlspecialchars((string)$ruleDefaults['model_number']); ?>" placeholder="Bijv. FZ-55JZ011B4">
+                                </div>
+                                <div class="form-group" style="width:140px;">
+                                    <label>Prioriteit</label>
+                                    <input type="number" name="sort_order" value="<?php echo (int)$ruleDefaults['sort_order']; ?>" placeholder="0">
+                                </div>
+                            </div>
+
+                            <?php foreach ($selectFields as $key => $meta): ?>
+                                <div class="form-group" style="margin-top:10px;">
+                                    <label><?php echo htmlspecialchars((string)$meta['label']); ?></label>
+                                    <select name="conditions[<?php echo htmlspecialchars($key); ?>]">
+                                        <option value="">(maakt niet uit)</option>
+                                        <?php foreach (($meta['options'] ?? []) as $opt): ?>
+                                            <?php $selected = ((string)($ruleDefaults['conditions'][$key] ?? '') === (string)$opt['value']); ?>
+                                            <option value="<?php echo htmlspecialchars((string)$opt['value']); ?>" <?php echo $selected ? 'selected' : ''; ?>><?php echo htmlspecialchars((string)$opt['label']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            <?php endforeach; ?>
+
+                            <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+                                <button type="submit" name="save_model_rule" class="btn btn-primary">💾 Opslaan</button>
+                                <?php if ($ruleDefaults['rule_id']): ?>
+                                    <a class="btn btn-secondary" href="?panel=1&edit_laptop_config=<?php echo (int)$editLaptopConfig['id']; ?>">❌ Annuleren</a>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    <?php endif; ?>
+                </div>
             </div>
         <?php endif; ?>
         

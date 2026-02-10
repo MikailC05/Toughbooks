@@ -10,6 +10,7 @@ if (!$offer || empty($offer['laptop']) || empty($offer['specs'])) {
 
 $laptop = $offer['laptop'];
 $specs = $offer['specs'];
+$modelNumber = (string)($offer['model_number'] ?? '');
 
 function h(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
@@ -121,8 +122,8 @@ ob_start();
       <div style="display:flex;justify-content:space-between;gap:12px;">
         <div>
           <div style="font-weight:900;font-size:14px;"><?php echo h((string)$laptop['name']); ?></div>
-          <?php if (!empty($laptop['model_code'])): ?>
-            <div class="muted" style="margin-top:4px;">Model: <?php echo h((string)$laptop['model_code']); ?></div>
+          <?php if (!empty($modelNumber) || !empty($laptop['model_code'])): ?>
+            <div class="muted" style="margin-top:4px;">Model: <?php echo h((string)($modelNumber !== '' ? $modelNumber : ($laptop['model_code'] ?? ''))); ?></div>
           <?php endif; ?>
         </div>
       </div>

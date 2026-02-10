@@ -61,38 +61,43 @@ function allScoresZero(?array $results): bool {
 </header>
 
 <main class="container">
-    <section class="hero">
-        <h2>Kies je voorkeuren</h2>
-        <p>Beantwoord een paar korte vragen en de configurator geeft de beste Toughbook-opties weer.</p>
-    </section>
+    <?php if ($results === null): ?>
+        <section class="hero">
+            <h2>Kies je voorkeuren</h2>
+            <p>Beantwoord een paar korte vragen en de configurator geeft de beste Toughbook-opties weer.</p>
+        </section>
 
-    <form method="post" id="quizForm">
-        <div class="questions" id="questionsContainer">
-            <?php $i = 0; foreach ($questions as $q): $i++; ?>
-            <fieldset class="step<?php echo $i===1 ? ' visible' : ''; ?>" data-index="<?php echo $i; ?>">
-                <legend><?php echo htmlspecialchars($q->text); ?></legend>
-                <?php if ($q->description): ?>
-                    <p class="muted" style="margin-bottom:12px;font-size:0.9em;"><?php echo htmlspecialchars($q->description); ?></p>
-                <?php endif; ?>
-                <?php foreach ($q->options as $opt): ?>
-                    <label>
-                        <input type="radio" name="q_<?php echo $q->id; ?>" value="<?php echo $opt['id']; ?>">
-                        <?php echo htmlspecialchars($opt['label']); ?>
-                    </label>
+        <form method="post" id="quizForm">
+            <div class="questions" id="questionsContainer">
+                <?php $i = 0; foreach ($questions as $q): $i++; ?>
+                <fieldset class="step<?php echo $i===1 ? ' visible' : ''; ?>" data-index="<?php echo $i; ?>">
+                    <legend><?php echo htmlspecialchars($q->text); ?></legend>
+                    <?php if ($q->description): ?>
+                        <p class="muted" style="margin-bottom:12px;font-size:0.9em;"><?php echo htmlspecialchars($q->description); ?></p>
+                    <?php endif; ?>
+                    <?php foreach ($q->options as $opt): ?>
+                        <label>
+                            <input type="radio" name="q_<?php echo $q->id; ?>" value="<?php echo $opt['id']; ?>">
+                            <?php echo htmlspecialchars($opt['label']); ?>
+                        </label>
+                    <?php endforeach; ?>
+                </fieldset>
                 <?php endforeach; ?>
-            </fieldset>
-            <?php endforeach; ?>
-        </div>
+            </div>
 
-        <div class="wizard-controls">
-            <button type="button" id="backBtn" class="cta secondary">Terug</button>
-            <button type="button" id="nextBtn" class="cta" disabled>Volgende</button>
-            <div class="muted" id="wizProgress"></div>
-        </div>
-    </form>
+            <div class="wizard-controls">
+                <button type="button" id="backBtn" class="cta secondary">Terug</button>
+                <button type="submit" id="nextBtn" class="cta">Volgende</button>
+                <div class="muted" id="wizProgress"></div>
+            </div>
+        </form>
+    <?php endif; ?>
 
     <?php if ($results !== null): ?>
     <section class="results">
+        <div class="results-controls" style="margin-bottom:16px;">
+            <a class="cta secondary" href="<?php echo htmlspecialchars(strtok($_SERVER['REQUEST_URI'], '?')); ?>">Terug naar vragen</a>
+        </div>
         <?php $zero = allScoresZero($results); ?>
         <?php if ($zero): ?>
             <div class="info" style="margin-bottom:16px;">
@@ -179,19 +184,28 @@ function allScoresZero(?array $results): bool {
     }));
     container.style.height = maxH + 'px';
 
+    function setRequiredForCurrentStep(){
+        steps.forEach(step => {
+            step.querySelectorAll('input[type=radio]').forEach(r => r.required = false);
+        });
+
+        const firstRadio = steps[current].querySelector('input[type=radio]');
+        if(firstRadio) firstRadio.required = true;
+    }
+
     function update(){
         steps.forEach((s, idx)=> s.classList.toggle('visible', idx === current));
         backBtn.style.display = current === 0 ? 'none' : 'inline-block';
         const selected = !!steps[current].querySelector('input[type=radio]:checked');
-        nextBtn.disabled = !selected;
         nextBtn.textContent = current === steps.length - 1 ? 'Toon beste matches' : 'Volgende';
         progress.textContent = 'Vraag ' + (current+1) + ' van ' + steps.length;
+        setRequiredForCurrentStep();
     }
 
     steps.forEach((step, idx)=>{
         const radios = step.querySelectorAll('input[type=radio]');
         radios.forEach(r => r.addEventListener('change', ()=>{
-            if(idx === current) nextBtn.disabled = false;
+            if(idx === current) update();
         }));
     });
 
@@ -199,11 +213,17 @@ function allScoresZero(?array $results): bool {
         if(current > 0) { current--; update(); }
     });
 
-    nextBtn.addEventListener('click', ()=>{
-        const any = steps[current].querySelector('input[type=radio]:checked');
-        if(!any){ alert('Kies een antwoord om door te gaan.'); return; }
-        if(current === steps.length - 1){ form.submit(); return; }
-        current++; update();
+    form.addEventListener('submit', (e)=>{
+        // Last step: let the form submit normally (browser will still block if invalid)
+        if(current === steps.length - 1) return;
+
+        // Only advance to next step if the current step is valid.
+        // If invalid, do NOT preventDefault so the browser can show its required message.
+        if (!form.checkValidity()) return;
+
+        e.preventDefault();
+        current++;
+        update();
     });
 
     update();

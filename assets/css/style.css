@@ -119,6 +119,15 @@ button.cta {
     border-radius: 6px;
 }
 
+a.cta {
+    display: inline-block;
+    background: var(--accent);
+    color: #ffffff;
+    padding: 10px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+}
+
 /* Steps are stacked on top of each other in the same place; transitions use opacity/translate */
 .step {
     position: absolute;
@@ -139,6 +148,10 @@ button.cta {
 }
 
 button.cta:hover {
+    filter: brightness(0.95)
+}
+
+a.cta:hover {
     filter: brightness(0.95)
 }
 
@@ -164,7 +177,18 @@ button.cta:hover {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04)
 }
 
+a.cta.secondary {
+    background: #fff;
+    color: #000;
+    border: 1px solid #d1d5db;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04)
+}
+
 .wizard-controls .cta.secondary:hover {
+    filter: brightness(0.98)
+}
+
+a.cta.secondary:hover {
     filter: brightness(0.98)
 }
 

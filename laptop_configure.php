@@ -1,8 +1,16 @@
 <?php
 session_start();
 require_once __DIR__ . '/src/Database.php';
+require_once __DIR__ . '/src/ModelNumber.php';
 
 $pdo = Database::getInstance()->getPdo();
+
+// Ensure model rules schema
+try {
+    ModelNumber::ensureSchema($pdo);
+} catch (Exception $e) {
+    // Non-fatal
+}
 
 function ensureLaptopConfigSchema(PDO $pdo): void
 {
@@ -80,8 +88,8 @@ foreach ($optRows as $o) {
 
 // Build 3-step wizard mapping
 $stepOrder = [
-    1 => ['title' => 'Stap 1 van 3', 'keys' => ['model_variant', 'processor']],
-    2 => ['title' => 'Stap 2 van 3', 'keys' => ['storage', 'ram', 'lte', 'gps', 'battery']],
+    1 => ['title' => 'Stap 1 van 3', 'keys' => ['keyboard_layout', 'wireless_connections', 'display_type']],
+    2 => ['title' => 'Stap 2 van 3', 'keys' => ['model_variant', 'processor', 'storage', 'ram', 'lte', 'gps', 'battery']],
     3 => ['title' => 'Stap 3 van 3', 'keys' => ['config_area_1', 'config_area_2']],
 ];
 
@@ -111,6 +119,9 @@ function normalizeKeyLabel(string $key, string $fallback): string
 {
     // Quick nicer titles for the screenshot-like UI
     $map = [
+        'keyboard_layout' => 'Toetsenbordindeling',
+        'wireless_connections' => 'DRAADLOZE VERBINDINGEN',
+        'display_type' => 'HD of FULL HD & TOUCHSCREEN',
         'model_variant' => 'Model variant',
         'processor' => 'Prozessor',
         'storage' => 'Opslag',
@@ -122,6 +133,13 @@ function normalizeKeyLabel(string $key, string $fallback): string
         'config_area_2' => 'Configuration area 2',
     ];
     return $map[$key] ?? $fallback;
+}
+
+$modelRules = [];
+try {
+    $modelRules = ModelNumber::getRules($pdo, $laptopId);
+} catch (Exception $e) {
+    $modelRules = [];
 }
 ?>
 <!doctype html>
@@ -149,6 +167,11 @@ function normalizeKeyLabel(string $key, string $fallback): string
 
 <main class="container">
     <h1 class="wizard-title">CONFIGURE YOUR TOUGHBOOK</h1>
+
+    <div class="card" style="max-width:820px;margin:0 auto 14px;">
+        <div class="muted" style="font-size:0.9em;">Model nummer:</div>
+        <div id="modelNumberPreview" style="font-weight:900;font-size:18px;margin-top:6px;"><?php echo htmlspecialchars((string)($laptop['model_code'] ?? '')); ?></div>
+    </div>
 
     <div class="wizard-stepbar">
         <div class="step-text" id="wizardStepText">Step 1 of 3</div>
@@ -246,6 +269,10 @@ function normalizeKeyLabel(string $key, string $fallback): string
 
 <script>
 (function(){
+    const baseModelNumber = <?php echo json_encode((string)($laptop['model_code'] ?? ''), JSON_UNESCAPED_UNICODE); ?>;
+    const modelRules = <?php echo json_encode($modelRules, JSON_UNESCAPED_UNICODE); ?>;
+    const modelPreview = document.getElementById('modelNumberPreview');
+
     const steps = Array.from(document.querySelectorAll('.wizard-step[data-step]'));
     const stepText = document.getElementById('wizardStepText');
     const progress = document.getElementById('wizardProgress');
@@ -256,6 +283,48 @@ function normalizeKeyLabel(string $key, string $fallback): string
 
     const total = steps.length;
     let current = 1;
+
+    function getSelectedByKey(){
+        const selected = {};
+        document.querySelectorAll('.wizard-section[data-field] input[data-field-input]').forEach(inp => {
+            const name = inp.getAttribute('name') || '';
+            if(!name) return;
+            selected[name] = inp.value || '';
+        });
+        return selected;
+    }
+
+    function computeModelNumber(selectedByKey){
+        let best = '';
+        let bestSpec = -1;
+        let bestSort = -999999;
+
+        (modelRules || []).forEach(rule => {
+            if (!rule || rule.is_active !== 1) return;
+            const cond = rule.conditions || {};
+            for (const k in cond) {
+                if (!Object.prototype.hasOwnProperty.call(cond, k)) continue;
+                if (!Object.prototype.hasOwnProperty.call(selectedByKey, k)) return;
+                if (String(selectedByKey[k]) !== String(cond[k])) return;
+            }
+
+            const spec = Object.keys(cond).length;
+            const sort = parseInt(rule.sort_order || 0, 10);
+            if (spec > bestSpec || (spec === bestSpec && sort > bestSort)) {
+                best = String(rule.model_number || '');
+                bestSpec = spec;
+                bestSort = sort;
+            }
+        });
+
+        return best || baseModelNumber;
+    }
+
+    function updateModelPreview(){
+        if(!modelPreview) return;
+        const selected = getSelectedByKey();
+        modelPreview.textContent = computeModelNumber(selected);
+    }
 
     function updateSummary(){
         const items = [];
@@ -280,6 +349,7 @@ function normalizeKeyLabel(string $key, string $fallback): string
         });
 
         summaryEl.textContent = items.join(' • ');
+        updateModelPreview();
     }
 
     function showStep(stepNum){
@@ -337,12 +407,21 @@ function normalizeKeyLabel(string $key, string $fallback): string
                 if (h.name) form.appendChild(h);
             });
 
+            // Computed model number based on rules
+            const selected = getSelectedByKey();
+            const model = document.createElement('input');
+            model.type = 'hidden';
+            model.name = 'model_number';
+            model.value = computeModelNumber(selected);
+            form.appendChild(model);
+
             document.body.appendChild(form);
             form.submit();
         }
     });
 
     showStep(1);
+    updateModelPreview();
 })();
 </script>
 </body>

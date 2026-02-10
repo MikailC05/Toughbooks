@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/src/Database.php';
+require_once __DIR__ . '/src/ModelNumber.php';
 
 function h(string $s): string {
         return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
@@ -9,11 +10,18 @@ $offer = $_SESSION['offer'] ?? null;
 $laptopId = 0;
 $laptop = null;
 $specs = [];
+$modelNumber = '';
 
 // Handle: normal entry to offer page (POST from configurator)
 if (!$laptop) {
     if (isset($_POST['laptop_id']) && ctype_digit((string)$_POST['laptop_id'])) {
         $pdo = Database::getInstance()->getPdo();
+
+        try {
+            ModelNumber::ensureSchema($pdo);
+        } catch (Exception $e) {
+            // Non-fatal
+        }
 
         $laptopId = (int)$_POST['laptop_id'];
         if ($laptopId <= 0) {
@@ -44,8 +52,13 @@ if (!$laptop) {
         }
 
         $specs = [];
+        $selectedByKey = [];
         foreach ($_POST as $key => $value) {
             if ($key === 'laptop_id') {
+                continue;
+            }
+            if ($key === 'model_number') {
+                // handled separately
                 continue;
             }
             if (!isset($labelByKey[$key])) {
@@ -63,6 +76,21 @@ if (!$laptop) {
                 'label' => $labelByKey[$key],
                 'value' => $display,
             ];
+
+            $selectedByKey[$key] = (string)$value;
+        }
+
+        // Model number: trust computed value if provided, otherwise compute server-side.
+        if (isset($_POST['model_number'])) {
+            $modelNumber = trim((string)$_POST['model_number']);
+        }
+        if ($modelNumber === '') {
+            try {
+                $rules = ModelNumber::getRules($pdo, $laptopId);
+                $modelNumber = ModelNumber::compute((string)($laptop['model_code'] ?? ''), $selectedByKey, $rules);
+            } catch (Exception $e) {
+                $modelNumber = (string)($laptop['model_code'] ?? '');
+            }
         }
 
         // Bewaar in session voor de download en e-mail
@@ -70,6 +98,7 @@ if (!$laptop) {
             'laptop_id' => $laptopId,
             'laptop' => $laptop,
             'specs' => $specs,
+            'model_number' => $modelNumber,
             'created_at' => date('c'),
         ];
         $offer = $_SESSION['offer'];
@@ -78,6 +107,7 @@ if (!$laptop) {
         $laptop = (array)$offer['laptop'];
         $specs = (array)($offer['specs'] ?? []);
         $laptopId = (int)($offer['laptop_id'] ?? 0);
+        $modelNumber = (string)($offer['model_number'] ?? '');
     } else {
         http_response_code(400);
         echo 'Geen offerte gevonden. Ga terug en configureer opnieuw.';
@@ -125,8 +155,8 @@ if (!$laptop) {
             <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
                 <div>
                     <h3 style="margin:0;"><?php echo h((string)$laptop['name']); ?></h3>
-                    <?php if (!empty($laptop['model_code'])): ?>
-                        <div class="muted" style="margin-top:6px;">Model: <?php echo h((string)$laptop['model_code']); ?></div>
+                    <?php if (!empty($modelNumber) || !empty($laptop['model_code'])): ?>
+                        <div class="muted" style="margin-top:6px;">Model: <?php echo h((string)($modelNumber !== '' ? $modelNumber : $laptop['model_code'])); ?></div>
                     <?php endif; ?>
                 </div>
                 <?php if (!empty($laptop['price_eur'])): ?>
